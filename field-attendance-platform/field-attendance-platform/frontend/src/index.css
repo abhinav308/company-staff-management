@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased font-sans;
+  }
+}
+
+@layer components {
+  /* Enterprise Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center font-medium rounded-lg px-4 py-2 text-sm transition-all duration-150 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed bg-blue-900 text-white hover:bg-blue-800 active:scale-[0.99];
+  }
+  .btn-primary {
+    @apply bg-blue-900 text-white hover:bg-blue-800 focus:ring-2 focus:ring-blue-600 focus:ring-offset-1;
+  }
+  .btn-secondary {
+    @apply bg-teal-700 text-white hover:bg-teal-600 focus:ring-2 focus:ring-teal-500 focus:ring-offset-1;
+  }
+  .btn-danger {
+    @apply bg-rose-600 text-white hover:bg-rose-500 focus:ring-2 focus:ring-rose-500 focus:ring-offset-1;
+  }
+  .btn-ghost {
+    @apply bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 hover:text-slate-900 shadow-none;
+  }
+  .btn-outline {
+    @apply border border-blue-900 text-blue-900 bg-transparent hover:bg-blue-50;
+  }
+
+  /* Enterprise Cards */
+  .card {
+    @apply rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all;
+  }
+  .card-hover {
+    @apply hover:border-slate-300 hover:shadow-md;
+  }
+
+  /* Form Elements */
+  .input {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-600/20 transition-all;
+  }
+  .label {
+    @apply block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5;
+  }
+
+  /* Corporate Badges */
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold;
+  }
+  .badge-success {
+    @apply bg-emerald-50 text-emerald-700 border border-emerald-200;
+  }
+  .badge-warning {
+    @apply bg-amber-50 text-amber-700 border border-amber-200;
+  }
+  .badge-danger {
+    @apply bg-rose-50 text-rose-700 border border-rose-200;
+  }
+  .badge-info {
+    @apply bg-blue-50 text-blue-800 border border-blue-200;
+  }
+  .badge-neutral {
+    @apply bg-slate-100 text-slate-700 border border-slate-200;
+  }
+}

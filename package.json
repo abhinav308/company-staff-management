@@ -1,0 +1,10 @@
+{
+  "name": "ncode-solution-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix field-attendance-platform/field-attendance-platform/frontend run dev -- --host",
+    "build": "npm --prefix field-attendance-platform/field-attendance-platform/frontend run build",
+    "backend": "powershell -Command \"cd field-attendance-platform/field-attendance-platform/backend; .venv\\Scripts\\python manage.py runserver 0.0.0.0:8000\""
+  }
+}
