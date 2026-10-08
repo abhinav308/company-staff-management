@@ -2,7 +2,7 @@ from django.conf import settings
 from rest_framework import serializers
 
 from tracking.models import TrackingEvent
-from .models import AttendanceSession, Visit, VisitPhoto
+from .models import AttendanceSession, Visit, VisitPhoto, LeaveRequest, Holiday
 
 INTERRUPTION_TYPES = ["LOCATION_UNAVAILABLE", "LOCATION_PERMISSION_DENIED"]
 
@@ -188,3 +188,19 @@ class PunchOutSerializer(serializers.Serializer):
     latitude = serializers.FloatField(required=False, min_value=-90, max_value=90)
     longitude = serializers.FloatField(required=False, min_value=-180, max_value=180)
     accuracy = serializers.FloatField(required=False, allow_null=True, min_value=0)
+
+
+class LeaveRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LeaveRequest
+        fields = [
+            "id", "user", "leave_type", "start_date", "end_date",
+            "reason", "status", "created_at", "updated_at"
+        ]
+        read_only_fields = ["id", "user", "status", "created_at", "updated_at"]
+
+
+class HolidaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Holiday
+        fields = ["id", "name", "date", "is_mandatory"]

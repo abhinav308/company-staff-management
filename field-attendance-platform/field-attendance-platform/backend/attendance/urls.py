@@ -11,6 +11,8 @@ from .views import (
     VisitPhotoServeView,
     VisitPhotoUploadView,
     VisitUpdateView,
+    LeaveRequestListCreateView,
+    HolidayListView,
 )
 
 urlpatterns = [
@@ -23,4 +25,6 @@ urlpatterns = [
     path("visits/<int:pk>/", VisitDetailUpdateView.as_view()),
     path("visits/<int:pk>/photos/", VisitPhotoUploadView.as_view()),
     path("visits/<int:visit_pk>/photos/<int:photo_pk>/", VisitPhotoServeView.as_view()),
+    path("leaves/", LeaveRequestListCreateView.as_view()),
+    path("holidays/", HolidayListView.as_view()),
 ]

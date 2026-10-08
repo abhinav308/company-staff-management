@@ -34,151 +34,136 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex flex-col justify-center items-center px-4 py-12">
-      {/* Container */}
-      <div className="w-full max-w-md">
-        {/* Company Header Branding */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-teal-500 to-blue-600 text-white shadow-xl shadow-blue-900/50 mb-4 ring-4 ring-white/10">
-            <span className="text-2xl font-black tracking-wider">(n)</span>
+    <div 
+      className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: `url('/ncode_bg.jpg')`, backgroundColor: '#0a192f' }}
+    >
+      {/* Dark gradient overlay for readability */}
+      <div className="absolute inset-0 bg-gradient-to-r from-slate-900/90 to-transparent md:w-2/3" />
+      <div className="absolute inset-0 bg-slate-900/30" />
+
+      {/* Main Container */}
+      <div className="w-full max-w-6xl flex flex-col md:flex-row items-center justify-between z-10 gap-8">
+        
+        {/* Left Side: Branding */}
+        <div className="text-center md:text-left flex-1 pl-0 md:pl-8 text-white relative">
+          <div className="flex flex-col items-center md:items-start">
+            {/* Ncode Solutions Logo Box */}
+            <div className="bg-white p-3 px-4 rounded shadow-lg mb-8 inline-block">
+              <span className="text-[#0088cc] font-bold text-2xl flex items-center gap-1 leading-none">
+                 <span className="border-2 border-[#0088cc] rounded-full px-1.5 py-0.5 text-lg mr-1">(n)</span>
+                 <div>Code<sup className="text-xs">&reg;</sup><div className="text-xs font-normal text-slate-400 mt-0.5 tracking-wide uppercase">Solutions</div></div>
+              </span>
+            </div>
+            
+            <h1 className="text-4xl md:text-5xl font-light mb-4 text-white">
+              Field Force Platform
+            </h1>
+            <p className="text-lg text-slate-300 mb-8 max-w-md">
+              Enterprise management for live attendance, tracking, and remote field operations.
+            </p>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white uppercase">
-            Ncode Solution IT Division
-          </h1>
-          <p className="text-sm font-medium text-teal-400 uppercase tracking-widest mt-0.5">
-            (GNFC)
-          </p>
-          <p className="text-xs text-slate-400 mt-2 font-light">
-            Field Attendance, Location Tracking & Activity Management
-          </p>
         </div>
 
-        {/* Card */}
-        <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-8">
-          <form onSubmit={submit} className="space-y-5">
-            <div>
-              <label className="label text-slate-700 flex items-center justify-between">
-                <span>User ID / Email / ESIC Number</span>
-              </label>
-              <div className="relative">
+        {/* Right Side: Login Card */}
+        <div className="w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl p-8 sm:p-10">
+            <div className="mb-8">
+              <p className="text-sm font-semibold text-blue-600 mb-1">Welcome to</p>
+              <p className="text-lg text-slate-600 mb-4">Ncode IT Division Portal</p>
+              <h2 className="text-3xl font-bold text-slate-800">Login</h2>
+            </div>
+
+            <form onSubmit={submit} className="space-y-5">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">
+                  Enter your username
+                </label>
                 <input
                   type="text"
-                  className="input pr-10 text-slate-900 placeholder-slate-400"
-                  placeholder="e.g. NS00125, employee@ncode.example, ESIC123456789"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="Enter Login ID"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   required
                   autoFocus
                 />
-                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">
+                  Enter your Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Enter Password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
                 </div>
               </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Enter your Employee ID, company email, or registered ESIC number.
-              </p>
-            </div>
 
-            <div>
-              <label className="label text-slate-700 flex items-center justify-between">
-                <span>Password</span>
+              {error && (
+                <div className="rounded bg-red-50 border border-red-200 p-2 text-xs text-red-600">
+                  {error}
+                </div>
+              )}
+
+              <div className="pt-2 flex flex-col gap-3">
+                <button
+                  type="submit"
+                  className="w-full bg-[#0088ff] hover:bg-blue-600 text-white font-semibold py-2.5 rounded shadow-sm transition-colors"
+                  disabled={busy}
+                >
+                  {busy ? 'Authenticating...' : 'Login'}
+                </button>
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="text-[11px] font-normal text-blue-800 hover:underline capitalize"
+                  className="w-full bg-[#0088ff] hover:bg-blue-600 text-white font-semibold py-2.5 rounded shadow-sm transition-colors"
+                  onClick={() => {
+                     setIdentifier('');
+                     setPassword('');
+                  }}
                 >
-                  {showPassword ? 'Hide' : 'Show'}
+                  Reset
                 </button>
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  className="input pr-10 text-slate-900 placeholder-slate-400"
-                  placeholder="••••••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                </div>
+              </div>
+            </form>
+
+            <div className="mt-8 pt-4 border-t border-slate-100">
+              <p className="text-xs text-slate-500 text-center mb-2">Test Credentials</p>
+              <div className="flex justify-center gap-4 text-xs">
+                <button
+                  type="button"
+                  onClick={() => fillDemo('NS00125', 'Password123!')}
+                  className="text-blue-600 hover:underline"
+                >
+                  Field Officer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fillDemo('admin', 'adminpassword123')}
+                  className="text-blue-600 hover:underline"
+                >
+                  Admin
+                </button>
+              </div>
+              <div className="mt-4 text-center text-xs text-slate-500">
+                New employee? <Link className="text-blue-600 hover:underline" to="/register">Register</Link>
               </div>
             </div>
-
-            {error && (
-              <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700 flex items-start gap-2">
-                <svg className="w-4 h-4 mt-0.5 shrink-0 text-rose-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-                <span className="whitespace-pre-line leading-relaxed">{error}</span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              className="btn btn-primary w-full py-2.5 text-sm font-semibold tracking-wide shadow-md shadow-blue-900/20"
-              disabled={busy}
-            >
-              {busy ? (
-                <span className="inline-flex items-center gap-2">
-                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                  </svg>
-                  Authenticating...
-                </span>
-              ) : (
-                'LOGIN TO PORTAL'
-              )}
-            </button>
-          </form>
-
-          {/* Quick Demo Credentials Assistant */}
-          <div className="mt-6 pt-5 border-t border-slate-100">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-              Quick Test Credentials
-            </p>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => fillDemo('NS00125', 'Password123!')}
-                className="text-left p-2 rounded-lg bg-slate-50 border border-slate-200/80 hover:bg-blue-50 hover:border-blue-200 transition-colors"
-              >
-                <div className="font-semibold text-slate-800">Field Employee</div>
-                <div className="text-[11px] text-slate-500 font-mono">NS00125</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => fillDemo('admin', 'adminpassword123')}
-                className="text-left p-2 rounded-lg bg-slate-50 border border-slate-200/80 hover:bg-blue-50 hover:border-blue-200 transition-colors"
-              >
-                <div className="font-semibold text-slate-800">Administrator</div>
-                <div className="text-[11px] text-slate-500 font-mono">admin</div>
-              </button>
-            </div>
-            <p className="text-[10px] text-slate-400 mt-2 text-center">
-              Also test with Email: <code className="text-slate-600 font-mono">rahul.sharma@ncode.example</code> or ESIC: <code className="text-slate-600 font-mono">ESIC123456789</code>
-            </p>
-          </div>
-
-          <div className="mt-5 text-center text-xs text-slate-500">
-            New employee?{' '}
-            <Link className="font-semibold text-blue-900 hover:text-blue-700 underline" to="/register">
-              Register Company Profile
-            </Link>
           </div>
         </div>
-
-        {/* Security / Confidentiality Notice */}
-        <p className="text-center text-[11px] text-slate-500 mt-6 leading-relaxed">
-          Authorized internal system for Ncode Solution IT Division (GNFC).
-          <br />
-          All location tracking and field sessions are monitored and logged.
-        </p>
       </div>
     </div>
   );

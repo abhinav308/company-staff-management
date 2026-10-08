@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 from locations.models import LocationRecord
 from tracking.models import TrackingEvent as E
 from tracking.services import broadcast_live, log_event
-from .models import AttendanceSession as S, Visit, VisitPhoto
+from .models import AttendanceSession as S, Visit, VisitPhoto, LeaveRequest, Holiday
 from .serializers import (
     EventSerializer,
     PunchInSerializer,
@@ -18,6 +18,8 @@ from .serializers import (
     VisitPhotoSerializer,
     VisitPhotoUploadSerializer,
     VisitSerializer,
+    LeaveRequestSerializer,
+    HolidaySerializer,
 )
 
 
@@ -312,3 +314,20 @@ class VisitPhotoServeView(APIView):
         if not (photo.visit.user_id == request.user.id or request.user.role == "ADMIN"):
             raise Http404
         return FileResponse(photo.photo.open("rb"), headers={"Cache-Control": "private, max-age=300"})
+
+
+class LeaveRequestListCreateView(generics.ListCreateAPIView):
+    serializer_class = LeaveRequestSerializer
+
+    def get_queryset(self):
+        if self.request.user.role == "ADMIN":
+            return LeaveRequest.objects.all()
+        return LeaveRequest.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class HolidayListView(generics.ListAPIView):
+    serializer_class = HolidaySerializer
+    queryset = Holiday.objects.all()

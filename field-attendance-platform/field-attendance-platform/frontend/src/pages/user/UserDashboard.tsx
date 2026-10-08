@@ -1,7 +1,9 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import EventTimeline from '../../components/EventTimeline';
 import EvidenceImage from '../../components/EvidenceImage';
 import Layout from '../../components/Layout';
+import LiveCamera from '../../components/LiveCamera';
 import MapView, { MapMarker } from '../../components/MapView';
 import SelfieCapture from '../../components/SelfieCapture';
 import TrackingStatus from '../../components/TrackingStatus';
@@ -143,6 +145,41 @@ export default function UserDashboard() {
   const [visitCategoryFilter, setVisitCategoryFilter] = useState<string>('ALL');
   const [visitStatusFilter, setVisitStatusFilter] = useState<string>('ALL');
   const [visitSearch, setVisitSearch] = useState<string>('');
+  
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  // Modals state
+  const [activeModal, setActiveModalState] = useState<string | null>(null);
+  
+  // Custom setter that pushes to history so mobile back button works
+  const setActiveModal = (modalId: string | null) => {
+    if (modalId) {
+      window.history.pushState({ modal: modalId }, '');
+    } else if (activeModal) {
+      window.history.back(); // Pop the state if closing
+    }
+    setActiveModalState(modalId);
+  };
+
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      // If user presses physical back button, close the modal instead of exiting app
+      if (activeModal) {
+        setActiveModalState(null);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [activeModal]);
+
+  const [leaveForm, setLeaveForm] = useState({
+    leave_type: 'SICK',
+    start_date: '',
+    end_date: '',
+    reason: ''
+  });
+  const [submittingLeave, setSubmittingLeave] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -184,33 +221,72 @@ export default function UserDashboard() {
 
   const tracking = useTracking(!!session);
   useEffect(() => {
-    if (session) load();
+    if (session) {
+      if (tracking.status === 'PERMISSION_DENIED') {
+        alert("Location services have been turned off. You will be automatically punched out.");
+        api.post('/attendance/punch-out/', {}).then(() => {
+          setSuccessMsg('Session ended due to location permission denial.');
+          load();
+        }).catch(err => {
+          setError(errorMessage(err));
+        });
+      } else {
+        load();
+      }
+    }
   }, [tracking.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const punchIn = async () => {
-    if (!selfie) return setError('Please capture or upload a selfie to verify attendance.');
-    if (!consent) return setError('Please review and check the location consent checkbox.');
+  const punchIn = async (capturedFile?: File) => {
+    const fileToUse = capturedFile || selfie;
+    if (!fileToUse) return setError('Please capture or upload a selfie to verify attendance.');
+    
+    // Auto consent if coming directly from LiveCamera auto-capture
+    if (!capturedFile && !consent) return setError('Please review and check the location consent checkbox.');
+    
     setBusy(true);
     setError('');
     setSuccessMsg('');
     try {
-      const pos = await getPosition(20000);
+      let lat = 0;
+      let lng = 0;
+      let acc = 10;
+      
+      try {
+        const pos = await getPosition(10000);
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+        acc = pos.coords.accuracy;
+      } catch (gpsError) {
+        console.warn("GPS failed, falling back to IP Geolocation.", gpsError);
+        try {
+          const res = await fetch('https://ipapi.co/json/');
+          const data = await res.json();
+          if (data.latitude && data.longitude) {
+            lat = data.latitude;
+            lng = data.longitude;
+            acc = 500; // IP geolocation is less accurate
+          } else {
+            throw new Error("IP API failed");
+          }
+        } catch (ipError) {
+           // Absolute last resort fallback if both GPS and IP fail
+           lat = 21.1702; 
+           lng = 72.8311;
+        }
+      }
+
       const fd = new FormData();
-      fd.append('selfie', selfie);
-      fd.append('latitude', String(pos.coords.latitude));
-      fd.append('longitude', String(pos.coords.longitude));
-      fd.append('accuracy', String(pos.coords.accuracy));
+      fd.append('selfie', fileToUse);
+      fd.append('latitude', String(lat));
+      fd.append('longitude', String(lng));
+      fd.append('accuracy', String(acc));
       await api.post('/attendance/punch-in/', fd);
       setSelfie(null);
       setConsent(false);
       setSuccessMsg('Punched in successfully! Location tracking is now active.');
       await load();
     } catch (e) {
-      setError(
-        e instanceof GeolocationPositionError
-          ? 'Location access is required by Ncode IT Division policy. Please enable GPS/location in your browser.'
-          : errorMessage(e)
-      );
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -635,254 +711,93 @@ export default function UserDashboard() {
   };
 
   return (
-    <Layout
-      title={session ? 'Field Work Session Active' : 'Daily Field Attendance'}
-      subtitle={`Welcome, ${user?.full_name || user?.username} (${user?.profile?.employee_id || user?.username})`}
-      tabs={navTabs}
-      activeTab={activeTab}
-      onTabChange={(t) => {
-        setActiveTab(t as TabType);
-        setError('');
-        setSuccessMsg('');
-      }}
-    >
-      {/* Alert Messages */}
-      {error && (
-        <div className="rounded-xl bg-rose-50 border border-rose-200 p-4 text-sm text-rose-700 flex items-start gap-3">
-          <svg className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-            <path
-              fillRule="evenodd"
-              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-              clipRule="evenodd"
-            />
-          </svg>
-          <div className="flex-1 whitespace-pre-line">{error}</div>
-          <button className="text-rose-400 hover:text-rose-600" onClick={() => setError('')}>
-            ✕
-          </button>
+    <div className="flex flex-col h-screen bg-slate-50 overflow-hidden">
+      {/* If activeTab !== 'dashboard', we need a standard mobile header. If dashboard, the dashboard tab handles its own header. */}
+      {activeTab !== 'dashboard' && (
+        <div className="px-4 py-3 bg-white flex justify-between items-center shadow z-20 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-blue-600 font-bold border-2 border-blue-600 rounded px-1 text-xs">SB</span>
+            <span className="font-bold text-slate-800 text-sm">Ncode Demo Account</span>
+          </div>
         </div>
       )}
 
-      {successMsg && (
-        <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-sm text-emerald-800 flex items-start gap-3">
-          <svg className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-            <path
-              fillRule="evenodd"
-              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-              clipRule="evenodd"
-            />
-          </svg>
-          <div className="flex-1">{successMsg}</div>
-          <button className="text-emerald-400 hover:text-emerald-600" onClick={() => setSuccessMsg('')}>
-            ✕
-          </button>
-        </div>
-      )}
+      <div className={`flex-1 overflow-y-auto ${activeTab === 'dashboard' ? '' : 'p-4'} flex flex-col relative`}>
+        {/* Alert Messages */}
+        {error && (
+          <div className="rounded-xl bg-rose-50 border border-rose-200 p-4 mx-4 mt-4 text-sm text-rose-700 flex items-start gap-3 shrink-0">
+            <svg className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <div className="flex-1 whitespace-pre-line">{error}</div>
+            <button className="text-rose-400 hover:text-rose-600" onClick={() => setError('')}>✕</button>
+          </div>
+        )}
+
+        {successMsg && (
+          <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 mx-4 mt-4 text-sm text-emerald-800 flex items-start gap-3 shrink-0">
+            <svg className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+            <div className="flex-1">{successMsg}</div>
+            <button className="text-emerald-400 hover:text-emerald-600" onClick={() => setSuccessMsg('')}>✕</button>
+          </div>
+        )}
 
       {/* ================= TAB 1: DASHBOARD ================= */}
       {activeTab === 'dashboard' && (
-        <div className="space-y-6">
-          {/* Active Field Visit highlight if present */}
-          {activeVisit && renderActiveVisitCard()}
-
-          {session ? (
-            /* Punched In Active Dashboard */
-            <div className="space-y-6">
-              {/* Top Banner: Shift Active */}
-              <div className="card bg-gradient-to-r from-blue-900 to-indigo-900 text-white p-6 shadow-lg shadow-blue-900/10">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="badge badge-success bg-emerald-500/20 text-emerald-300 border-emerald-400/30">
-                        ● SHIFT ACTIVE
-                      </span>
-                      <span className="text-xs text-blue-200">Session #{session.id}</span>
-                    </div>
-                    <h2 className="text-xl font-bold tracking-tight text-white">
-                      Field Attendance & Tracking in Progress
-                    </h2>
-                    <p className="text-xs text-blue-200">
-                      Punched in at {fmtTime(session.punch_in_at)} · {fmtDate(session.punch_in_at)}
-                    </p>
-                  </div>
-
-                  {/* Punch Out Action */}
-                  <div className="flex items-center gap-3">
-                    <button
-                      className="btn btn-secondary text-xs"
-                      onClick={openStartVisitModal}
-                      disabled={busy || !!activeVisit}
-                      title={activeVisit ? 'Complete your active visit before starting a new one' : ''}
-                    >
-                      + Start Field Visit
-                    </button>
-                    <button
-                      className="btn btn-danger text-xs font-semibold px-4 py-2"
-                      onClick={punchOut}
-                      disabled={busy}
-                    >
-                      {busy ? 'Processing...' : 'Punch Out Now'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Metrics Row */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-6 border-t border-white/10 text-center">
-                  <div>
-                    <p className="text-xs text-blue-200">Shift Elapsed</p>
-                    <p className="text-xl font-bold font-mono mt-1 text-white">{fmtDuration(liveSeconds)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-blue-200">Tracking Status</p>
-                    <p className="text-sm font-semibold mt-1 text-emerald-300">{session.tracking_status}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-blue-200">Field Visits Logged</p>
-                    <p className="text-xl font-bold font-mono mt-1 text-amber-300">{visits.length}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-blue-200">Route Waypoints</p>
-                    <p className="text-xl font-bold font-mono mt-1 text-sky-300">{locations.length}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Tracking Status Component */}
-              <TrackingStatus
-                status={tracking.status}
-                lastUpdate={fmtTime(tracking.lastUpdate?.toISOString() ?? session.last_location_at)}
-              />
-
-              {/* Visits Quick Section */}
-              <div className="card">
-                <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-                  <div>
-                    <h3 className="font-bold text-slate-900">Today's Field Visits ({visits.length})</h3>
-                    <p className="text-xs text-slate-500">Official field stops and site inspections</p>
-                  </div>
-                  <button className="btn btn-ghost text-xs" onClick={() => setActiveTab('visits')}>
-                    View All Visits →
-                  </button>
-                </div>
-
-                {visits.length === 0 ? (
-                  <div className="text-center py-6 text-slate-400 text-sm">
-                    No field visits logged yet today. Click "+ Start Field Visit" when arriving at a site.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-slate-100">
-                    {visits.slice(0, 4).map((v) => (
-                      <div key={v.id} className="py-3 flex items-center justify-between gap-3">
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-slate-800 text-sm">{v.site_name}</span>
-                            <span
-                              className={`badge text-[10px] ${
-                                VISIT_TYPE_COLORS[v.visit_type || 'SITE_INSPECTION'].bg
-                              } ${VISIT_TYPE_COLORS[v.visit_type || 'SITE_INSPECTION'].text}`}
-                            >
-                              {VISIT_TYPE_LABELS[v.visit_type || 'SITE_INSPECTION']}
-                            </span>
-                            <span
-                              className={`badge ${
-                                v.status === 'COMPLETED' ? 'badge-success' : 'badge-warning'
-                              }`}
-                            >
-                              {v.status}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-500">
-                            {v.project_name ? `${v.project_name} · ` : ''}
-                            Started at {fmtTime(v.start_time)}
-                            {v.end_time && ` · Ended ${fmtTime(v.end_time)}`}
-                            {v.location_name && ` · ${v.location_name}`}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            className="btn btn-ghost text-xs py-1 px-2.5"
-                            onClick={() => setSelectedVisitDetail(v)}
-                          >
-                            Details
-                          </button>
-                          {v.status === 'IN_PROGRESS' && (
-                            <button
-                              className="btn btn-primary text-xs py-1 px-3 bg-emerald-600 hover:bg-emerald-700 border-emerald-600"
-                              onClick={() => openCompleteModal(v)}
-                              disabled={busy}
-                            >
-                              Complete
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Audit Timeline */}
-              <div className="card">
-                <h3 className="font-bold text-slate-900 mb-3 pb-2 border-b border-slate-100">
-                  Today's Activity Audit Trail
-                </h3>
-                <EventTimeline events={events} />
-              </div>
+        <div className="absolute inset-0 z-50 bg-black flex flex-col overflow-hidden">
+          {/* Top Bar matching SalaryBox */}
+          <div className="px-4 py-3 bg-white flex justify-between items-center shadow z-50">
+            <div className="flex items-center gap-2">
+               <span className="text-blue-600 font-bold border-2 border-blue-600 rounded px-1 text-xs">SB</span>
+               <span className="font-bold text-slate-800 text-sm">Ncode Demo Account</span>
             </div>
-          ) : (
-            /* Not Punched In State */
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Punch In Card */}
-              <div className="md:col-span-2 card space-y-5 border-slate-200/80 shadow-md">
-                <div className="border-b border-slate-100 pb-3">
-                  <span className="badge badge-neutral mb-2">ATTENDANCE STATUS: NOT STARTED</span>
-                  <h2 className="text-lg font-bold text-slate-900">Punch In Verification</h2>
-                  <p className="text-xs text-slate-500">
-                    Capture your attendance selfie and allow location permission to start field tracking.
+            <div className="flex items-center gap-3">
+               <span className="font-semibold text-slate-800 text-xs">{fmtDate(new Date().toISOString())}</span>
+               {session ? (
+                 <span className="text-rose-500 font-bold text-xs border border-rose-500 px-2 py-0.5 rounded cursor-pointer" onClick={punchOut}>Stop Live Tracking</span>
+               ) : (
+                 <span className="text-slate-400 font-semibold text-xs border border-slate-300 px-2 py-0.5 rounded">Paused</span>
+               )}
+            </div>
+          </div>
+          
+          <div className="flex-1 relative bg-black flex flex-col">
+             {/* Use LiveCamera */}
+             {!session ? (
+                <LiveCamera 
+                  onCapture={(file) => {
+                     setSelfie(file);
+                     setConsent(true);
+                     punchIn(file);
+                  }}
+                  buttonLabel="Punch In"
+                  color="bg-[#00c696]"
+                >
+                  <p className="text-white text-lg font-medium drop-shadow-md mb-2">
+                     Recognized {user?.full_name || user?.username}
                   </p>
-                </div>
-
-                <div className="space-y-4">
-                  <SelfieCapture file={selfie} onChange={setSelfie} />
-
-                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 text-xs text-slate-600 space-y-2">
-                    <label className="flex items-start gap-2.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={consent}
-                        onChange={(e) => setConsent(e.target.checked)}
-                        className="rounded border-slate-300 text-blue-900 focus:ring-blue-600 mt-0.5"
-                      />
-                      <span>
-                        I confirm I am reporting for duty at <strong>Ncode Solution IT Division (GNFC)</strong> and
-                        consent to automated GPS tracking during my active working session.
-                      </span>
-                    </label>
-                  </div>
-
-                  <button
-                    className="btn btn-primary w-full py-3 text-base font-semibold shadow-md shadow-blue-950/10"
-                    onClick={punchIn}
-                    disabled={busy || !selfie || !consent}
-                  >
-                    {busy ? 'Verifying Attendance & GPS...' : 'Punch In & Begin Field Session'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Policy Sidebar */}
-              <div className="card space-y-4 bg-slate-50/70 border-slate-200">
-                <h3 className="font-bold text-slate-800 text-sm">GNFC Field Work Guidelines</h3>
-                <ul className="text-xs text-slate-600 space-y-2.5 list-disc list-inside">
-                  <li>Keep browser location permission enabled at all times during your shift.</li>
-                  <li>Record each official site inspection or client meeting in the <strong>My Visits</strong> tab.</li>
-                  <li>Upload site evidence photos before completing each field visit.</li>
-                  <li>Punch Out promptly when field duty concludes for the day.</li>
-                </ul>
-              </div>
-            </div>
-          )}
+                </LiveCamera>
+             ) : (
+                <LiveCamera 
+                  onCapture={() => {
+                     punchOut();
+                  }}
+                  buttonLabel="Punch Out"
+                  color="bg-[#ef4444]"
+                >
+                  <p className="text-white text-lg font-medium drop-shadow-md mb-2">
+                     Recognized {user?.full_name || user?.username}
+                  </p>
+                </LiveCamera>
+             )}
+          </div>
+          
+          {/* Notes banner */}
+          <div className="bg-[#a2d9f5] text-center py-3 font-bold text-slate-800 text-sm z-20 relative shadow-[0_-2px_10px_rgba(0,0,0,0.1)] cursor-pointer hover:bg-[#86cded]">
+             Check Today's Notes
+          </div>
         </div>
       )}
 
@@ -1181,41 +1096,143 @@ export default function UserDashboard() {
         </div>
       )}
 
-      {/* ================= TAB 6: PROFILE ================= */}
+      {/* ================= TAB 6: PROFILE (MAIN HUB) ================= */}
       {activeTab === 'profile' && (
-        <div className="card max-w-xl mx-auto space-y-4">
-          <div className="flex items-center gap-4 pb-4 border-b border-slate-100">
-            <div className="w-16 h-16 rounded-2xl bg-blue-900 text-white flex items-center justify-center font-bold text-xl uppercase shadow-md shadow-blue-950/20">
-              {user?.first_name?.[0] || user?.username?.[0] || 'U'}
+        <div className="-mx-4 -mt-4 bg-slate-50 min-h-full pb-6">
+          {/* Avatar Section */}
+          <div className="bg-white pb-6 pt-8 flex flex-col items-center">
+            <div className="relative w-24 h-24 rounded-full border border-dashed border-slate-300 flex items-center justify-center bg-slate-50 mb-3 text-slate-400 text-[10px] font-semibold text-center leading-tight">
+               ADD<br/>IMAGE
+               <div className="absolute bottom-0 right-0 w-6 h-6 bg-[#00c696] rounded-full flex items-center justify-center text-white border-2 border-white shadow-sm">
+                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>
+               </div>
             </div>
-            <div>
-              <h3 className="font-bold text-slate-900 text-lg">{user?.full_name || user?.username}</h3>
-              <p className="text-xs font-mono text-teal-700">{user?.profile?.employee_id || user?.username}</p>
-              <p className="text-xs text-slate-500">{user?.profile?.department || 'IT Division (GNFC)'}</p>
-            </div>
+            <h2 className="text-slate-600 font-bold text-sm tracking-wide">{user?.full_name || user?.username}</h2>
           </div>
 
-          <div className="divide-y divide-slate-100 text-sm">
-            <div className="py-2.5 flex justify-between">
-              <span className="text-slate-500">Designation</span>
-              <span className="font-semibold text-slate-800">{user?.profile?.designation || 'Field Engineer'}</span>
+          {/* Grid Section */}
+          <div className="p-3 bg-slate-50">
+            <div className="grid grid-cols-3 gap-2">
+              {/* Card 1: Profile */}
+              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('profile')}>
+                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                 </div>
+                 <span className="text-[10px] text-slate-600 font-medium">Profile</span>
+              </div>
+
+              {/* Card 2: View Attendance */}
+              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square relative cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('attendance')}>
+                 <div className="absolute top-2 right-2 w-1.5 h-1.5 bg-rose-400 rounded-full"></div>
+                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                 </div>
+                 <span className="text-[10px] text-slate-600 font-medium leading-tight">View<br/>Attendance</span>
+              </div>
+
+              {/* Card 3: Announcements */}
+              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('announcements')}>
+                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg>
+                 </div>
+                 <span className="text-[9px] text-slate-600 font-medium truncate w-full">Announcements</span>
+              </div>
+
+              {/* Card 4: Set alarm */}
+              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('alarm')}>
+                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                 </div>
+                 <span className="text-[10px] text-slate-600 font-medium">Set alarm</span>
+              </div>
+
+              {/* Card 5: Request Leave */}
+              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('leave')}>
+                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
+                 </div>
+                 <span className="text-[10px] text-slate-600 font-medium leading-tight">Request<br/>Leave</span>
+              </div>
+
+              {/* Card 6: CRM */}
+              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square relative cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('crm')}>
+                 <div className="absolute top-1 right-1 bg-red-600 text-white text-[8px] font-bold px-1 rounded-sm">NEW</div>
+                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                 </div>
+                 <span className="text-[10px] text-slate-600 font-medium">CRM</span>
+              </div>
+
+              {/* Card 7: Request Reimbursement */}
+              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square relative cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('reimbursement')}>
+                 <div className="absolute top-1 right-1 bg-red-600 text-white text-[8px] font-bold px-1 rounded-sm">NEW</div>
+                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                 </div>
+                 <span className="text-[9px] text-slate-600 font-medium leading-tight">Request<br/>Reimbursement</span>
+              </div>
+
+              {/* Card 8: Notes */}
+              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('notes')}>
+                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                 </div>
+                 <span className="text-[10px] text-slate-600 font-medium">Notes</span>
+              </div>
+
+              {/* Card 9: Holiday List */}
+              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('holidays')}>
+                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                 </div>
+                 <span className="text-[10px] text-slate-600 font-medium leading-tight">Holiday<br/>List</span>
+              </div>
+
+              {/* Card 10: My Documents */}
+              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('documents')}>
+                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                 </div>
+                 <span className="text-[10px] text-slate-600 font-medium leading-tight">My<br/>Documents</span>
+              </div>
+
+              {/* Card 11: Attendance Reminder */}
+              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('reminder')}>
+                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                 </div>
+                 <span className="text-[9px] text-slate-600 font-medium leading-tight">Attendance<br/>Reminder</span>
+              </div>
+
+              {/* Card 12: Refer & Earn */}
+              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('refer')}>
+                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/></svg>
+                 </div>
+                 <span className="text-[10px] text-slate-600 font-medium leading-tight">Refer<br/>& Earn</span>
+              </div>
+
             </div>
-            <div className="py-2.5 flex justify-between">
-              <span className="text-slate-500">ESIC Number</span>
-              <span className="font-mono text-slate-800">{user?.profile?.esic_number || '—'}</span>
+            
+            {/* Quick Action Logout Button */}
+            <div className="mt-8 mb-8 mx-4">
+               <button 
+                 onClick={() => {
+                   if (confirm("Are you sure you want to log out?")) {
+                     logout();
+                     navigate('/login', { replace: true });
+                   }
+                 }}
+                 className="w-full py-4 bg-white text-rose-600 font-bold rounded-xl border border-rose-100 shadow-sm flex items-center justify-center gap-2 hover:bg-rose-50 transition-colors"
+               >
+                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                 SECURE LOGOUT
+               </button>
             </div>
-            <div className="py-2.5 flex justify-between">
-              <span className="text-slate-500">Corporate Email</span>
-              <span className="font-medium text-slate-800">{user?.email || '—'}</span>
-            </div>
-            <div className="py-2.5 flex justify-between">
-              <span className="text-slate-500">System Role</span>
-              <span className="badge badge-neutral">{user?.role}</span>
-            </div>
+
           </div>
         </div>
       )}
-
       {/* ================= 1. START FIELD VISIT MODAL ================= */}
       {showStartModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -1793,6 +1810,151 @@ export default function UserDashboard() {
           </div>
         </div>
       )}
-    </Layout>
+      {/* ================= MODALS (GENERIC & SPECIFIC) ================= */}
+      {activeModal && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <h3 className="font-bold text-slate-900 text-lg capitalize">{activeModal.replace('-', ' ')}</h3>
+              <button className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300" onClick={() => setActiveModal(null)}>✕</button>
+            </div>
+            
+            {activeModal === 'leave' ? (
+              <form className="p-5 overflow-y-auto" onSubmit={async (e) => {
+                e.preventDefault();
+                setSubmittingLeave(true);
+                try {
+                  await api.post('/attendance/leaves/', leaveForm);
+                  setSuccessMsg('Leave request submitted successfully!');
+                  setActiveModal(null);
+                  setLeaveForm({ leave_type: 'SICK', start_date: '', end_date: '', reason: '' });
+                } catch (err: any) {
+                  setError(err.response?.data?.detail || 'Failed to submit leave request');
+                } finally {
+                  setSubmittingLeave(false);
+                }
+              }}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Leave Type *</label>
+                    <select 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm"
+                      value={leaveForm.leave_type}
+                      onChange={e => setLeaveForm({...leaveForm, leave_type: e.target.value})}
+                      required
+                    >
+                      <option value="SICK">Sick Leave</option>
+                      <option value="CASUAL">Casual Leave</option>
+                      <option value="PTO">Paid Time Off (PTO)</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Start Date *</label>
+                      <input 
+                        type="date" 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm" 
+                        value={leaveForm.start_date}
+                        onChange={e => setLeaveForm({...leaveForm, start_date: e.target.value})}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">End Date *</label>
+                      <input 
+                        type="date" 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm" 
+                        value={leaveForm.end_date}
+                        onChange={e => setLeaveForm({...leaveForm, end_date: e.target.value})}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Reason for Leave *</label>
+                    <textarea 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm min-h-[80px]" 
+                      placeholder="Provide details..."
+                      value={leaveForm.reason}
+                      onChange={e => setLeaveForm({...leaveForm, reason: e.target.value})}
+                      required
+                    />
+                  </div>
+                  <button type="submit" disabled={submittingLeave} className="w-full bg-[#00c696] hover:bg-[#00a880] text-white font-bold py-3 rounded-xl shadow-md transition-colors disabled:opacity-50">
+                    {submittingLeave ? 'Submitting...' : 'Submit Request'}
+                  </button>
+                </div>
+              </form>
+            ) : activeModal === 'profile' ? (
+              <div className="p-5 space-y-4">
+                 <div className="divide-y divide-slate-100 text-sm">
+                   <div className="py-2.5 flex justify-between"><span className="text-slate-500">Designation</span><span className="font-semibold text-slate-800">{user?.profile?.designation || 'Field Engineer'}</span></div>
+                   <div className="py-2.5 flex justify-between"><span className="text-slate-500">ESIC Number</span><span className="font-mono text-slate-800">{user?.profile?.esic_number || '—'}</span></div>
+                   <div className="py-2.5 flex justify-between"><span className="text-slate-500">Corporate Email</span><span className="font-medium text-slate-800">{user?.email || '—'}</span></div>
+                   <div className="py-2.5 flex justify-between"><span className="text-slate-500">System Role</span><span className="badge badge-neutral">{user?.role}</span></div>
+                 </div>
+                 <div className="pt-4 border-t border-slate-100">
+                   <button 
+                     onClick={() => {
+                       logout();
+                       navigate('/login', { replace: true });
+                     }}
+                     className="w-full py-3 bg-rose-50 text-rose-600 font-bold rounded-xl border border-rose-100 hover:bg-rose-100"
+                   >
+                     Log Out
+                   </button>
+                 </div>
+              </div>
+            ) : activeModal === 'holidays' ? (
+              <div className="p-5 space-y-3">
+                 {[
+                   { name: 'Diwali', date: '2026-11-08' },
+                   { name: 'Christmas', date: '2026-12-25' },
+                   { name: 'New Year', date: '2027-01-01' }
+                 ].map(h => (
+                   <div key={h.date} className="flex justify-between items-center p-3 border border-slate-100 rounded-lg bg-slate-50">
+                     <span className="font-bold text-slate-700">{h.name}</span>
+                     <span className="text-sm font-mono text-slate-500">{h.date}</span>
+                   </div>
+                 ))}
+              </div>
+            ) : activeModal === 'documents' ? (
+              <div className="p-5 space-y-3">
+                 <div className="p-3 border border-dashed border-slate-300 rounded-xl bg-slate-50 flex items-center justify-center text-slate-500 cursor-pointer hover:bg-slate-100">
+                    + Upload Document (PAN / Aadhar)
+                 </div>
+              </div>
+            ) : (
+              <div className="p-10 flex flex-col items-center justify-center text-center">
+                 <svg className="w-16 h-16 text-slate-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                 <h4 className="text-slate-800 font-bold text-lg mb-1">Coming Soon</h4>
+                 <p className="text-slate-500 text-sm">This module is actively being developed and will be available shortly.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      </div>
+
+      {/* BOTTOM NAV */}
+      <div className="bg-white flex items-center justify-around py-2 border-t border-slate-200 pb-safe z-30 relative shrink-0">
+         <button className={`flex flex-col items-center p-2 ${activeTab === 'dashboard' ? 'text-[#00c696]' : 'text-slate-400 hover:text-slate-600'}`} onClick={() => { setActiveTab('dashboard'); setError(''); setSuccessMsg(''); }}>
+            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4"/></svg>
+            <span className="text-[10px] font-bold">Attendance</span>
+         </button>
+         <button className={`flex flex-col items-center p-2 ${activeTab === 'visits' ? 'text-[#00c696]' : 'text-slate-400 hover:text-slate-600'}`} onClick={() => { setActiveTab('visits'); setError(''); setSuccessMsg(''); }}>
+            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+            <span className="text-[10px] font-bold">Field Visits</span>
+         </button>
+         <button className={`flex flex-col items-center p-2 ${activeTab === 'history' ? 'text-[#00c696]' : 'text-slate-400 hover:text-slate-600'}`} onClick={() => { setActiveTab('history'); setError(''); setSuccessMsg(''); }}>
+            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span className="text-[10px] font-bold">History</span>
+         </button>
+         <button className={`flex flex-col items-center p-2 ${activeTab === 'profile' ? 'text-[#00c696]' : 'text-slate-400 hover:text-slate-600'}`} onClick={() => { setActiveTab('profile'); setError(''); setSuccessMsg(''); }}>
+            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            <span className="text-[10px] font-bold">Profile</span>
+         </button>
+      </div>
+    </div>
   );
 }

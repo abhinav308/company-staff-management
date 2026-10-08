@@ -100,3 +100,36 @@ class VisitPhoto(models.Model):
 
     class Meta:
         ordering = ["created_at", "id"]
+
+
+class LeaveRequest(models.Model):
+    class LeaveType(models.TextChoices):
+        SICK = "SICK", "Sick Leave"
+        CASUAL = "CASUAL", "Casual Leave"
+        PTO = "PTO", "Paid Time Off"
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending Approval"
+        APPROVED = "APPROVED", "Approved"
+        REJECTED = "REJECTED", "Rejected"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="leave_requests")
+    leave_type = models.CharField(max_length=10, choices=LeaveType.choices)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    reason = models.TextField()
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class Holiday(models.Model):
+    name = models.CharField(max_length=100)
+    date = models.DateField(unique=True)
+    is_mandatory = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["date"]

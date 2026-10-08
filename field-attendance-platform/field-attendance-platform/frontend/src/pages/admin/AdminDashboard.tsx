@@ -446,30 +446,36 @@ export default function AdminDashboard() {
       onTabChange={(t) => setActiveTab(t as AdminTab)}
     >
       {/* Metric Summary Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <div className="card text-center border-l-4 border-l-blue-900">
-          <p className="text-[11px] font-semibold uppercase text-slate-500">Total Enrolled</p>
-          <p className="text-2xl font-bold text-slate-900 mt-1">{summary?.total_users ?? '—'}</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
+        <div className="rounded-xl bg-[#3b82f6] text-white p-6 shadow-md relative overflow-hidden">
+          <p className="text-xs font-bold uppercase tracking-wider opacity-90 relative z-10">Total Users</p>
+          <p className="text-4xl font-bold mt-2 relative z-10">{summary?.total_users ?? '—'}</p>
+          <div className="absolute right-[-20px] bottom-[-20px] opacity-20">
+            <svg className="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" /></svg>
+          </div>
         </div>
-        <div className="card text-center border-l-4 border-l-emerald-600">
-          <p className="text-[11px] font-semibold uppercase text-slate-500">Active Today</p>
-          <p className="text-2xl font-bold text-emerald-700 mt-1">{summary?.active_users ?? '—'}</p>
+        <div className="rounded-xl bg-[#10b981] text-white p-6 shadow-md relative overflow-hidden">
+          <p className="text-xs font-bold uppercase tracking-wider opacity-90 relative z-10">Active Users</p>
+          <p className="text-4xl font-bold mt-2 relative z-10">{summary?.active_users ?? '—'}</p>
+          <div className="absolute right-[-20px] bottom-[-20px] opacity-20">
+             <svg className="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+          </div>
         </div>
-        <div className="card text-center border-l-4 border-l-teal-600">
-          <p className="text-[11px] font-semibold uppercase text-slate-500">Live Tracking</p>
-          <p className="text-2xl font-bold text-teal-700 mt-1">{summary?.currently_tracking ?? '—'}</p>
+        <div className="rounded-xl bg-[#ef4444] text-white p-6 shadow-md relative overflow-hidden">
+          <p className="text-xs font-bold uppercase tracking-wider opacity-90 relative z-10">Inactive Users</p>
+          <p className="text-4xl font-bold mt-2 relative z-10">
+            {(summary?.total_users ?? 0) - (summary?.active_users ?? 0)}
+          </p>
+          <div className="absolute right-[-20px] bottom-[-20px] opacity-20">
+             <svg className="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+          </div>
         </div>
-        <div className="card text-center border-l-4 border-l-rose-500">
-          <p className="text-[11px] font-semibold uppercase text-slate-500">GPS Interruptions</p>
-          <p className="text-2xl font-bold text-rose-600 mt-1">{summary?.location_unavailable ?? 0}</p>
-        </div>
-        <div className="card text-center border-l-4 border-l-amber-500">
-          <p className="text-[11px] font-semibold uppercase text-slate-500">Field Visits Today</p>
-          <p className="text-2xl font-bold text-amber-700 mt-1">{summary?.today_visits ?? 0}</p>
-        </div>
-        <div className="card text-center border-l-4 border-l-slate-700">
-          <p className="text-[11px] font-semibold uppercase text-slate-500">Completed Shifts</p>
-          <p className="text-2xl font-bold text-slate-800 mt-1">{summary?.completed_sessions ?? '—'}</p>
+        <div className="rounded-xl bg-[#f97316] text-white p-6 shadow-md relative overflow-hidden">
+          <p className="text-xs font-bold uppercase tracking-wider opacity-90 relative z-10">Inspections</p>
+          <p className="text-4xl font-bold mt-2 relative z-10">{summary?.today_visits ?? 0}</p>
+          <div className="absolute right-[-20px] bottom-[-20px] opacity-20">
+             <svg className="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" /><path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm9.707 5.707a1 1 0 00-1.414-1.414L9 12.586l-1.293-1.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+          </div>
         </div>
       </div>
 
@@ -509,16 +515,16 @@ export default function AdminDashboard() {
             </div>
 
             <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase text-slate-500 border-b border-slate-100">
+              <thead className="text-xs uppercase bg-[#00a29a] text-white">
                 <tr>
-                  <th className="py-2.5">Employee</th>
-                  <th>Punch In</th>
-                  <th>Last GPS Ping</th>
-                  <th>Status</th>
-                  <th>Action</th>
+                  <th className="py-2.5 px-3">Employee</th>
+                  <th className="px-3">Punch In</th>
+                  <th className="px-3">Last GPS Ping</th>
+                  <th className="px-3">Status</th>
+                  <th className="px-3">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {Object.values(live).length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-6 text-center text-slate-400 text-sm">
@@ -586,19 +592,19 @@ export default function AdminDashboard() {
             </div>
 
             <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase text-slate-500 border-b border-slate-100">
+              <thead className="text-xs uppercase bg-[#00a29a] text-white">
                 <tr>
-                  <th className="py-2.5">Name</th>
-                  <th>Employee ID</th>
-                  <th>Official Email</th>
-                  <th>ESIC Number</th>
-                  <th>Department</th>
-                  <th>Designation</th>
-                  <th>Shift Status</th>
-                  <th>Action</th>
+                  <th className="py-2.5 px-3">Name</th>
+                  <th className="px-3">Employee ID</th>
+                  <th className="px-3">Official Email</th>
+                  <th className="px-3">ESIC Number</th>
+                  <th className="px-3">Department</th>
+                  <th className="px-3">Designation</th>
+                  <th className="px-3">Shift Status</th>
+                  <th className="px-3">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {users.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-8 text-center text-slate-400">

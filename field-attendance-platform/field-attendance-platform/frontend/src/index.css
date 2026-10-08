@@ -4,62 +4,62 @@
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 antialiased font-sans;
+    @apply bg-[#e8e9eb] text-slate-800 antialiased font-sans;
   }
 }
 
 @layer components {
-  /* Enterprise Buttons */
+  /* GWSSB Enterprise Buttons */
   .btn {
-    @apply inline-flex items-center justify-center font-medium rounded-lg px-4 py-2 text-sm transition-all duration-150 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed bg-blue-900 text-white hover:bg-blue-800 active:scale-[0.99];
+    @apply inline-flex items-center justify-center font-medium rounded px-4 py-2 text-xs transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed bg-[#00a29a] text-white hover:bg-[#008f88] active:scale-[0.99];
   }
   .btn-primary {
-    @apply bg-blue-900 text-white hover:bg-blue-800 focus:ring-2 focus:ring-blue-600 focus:ring-offset-1;
+    @apply bg-[#00a29a] text-white hover:bg-[#008f88] focus:ring-2 focus:ring-[#00a29a] focus:ring-offset-1;
   }
   .btn-secondary {
-    @apply bg-teal-700 text-white hover:bg-teal-600 focus:ring-2 focus:ring-teal-500 focus:ring-offset-1;
+    @apply bg-[#cf85e6] text-white hover:bg-[#bd78d2] focus:ring-2 focus:ring-[#cf85e6] focus:ring-offset-1;
   }
   .btn-danger {
-    @apply bg-rose-600 text-white hover:bg-rose-500 focus:ring-2 focus:ring-rose-500 focus:ring-offset-1;
+    @apply bg-rose-500 text-white hover:bg-rose-600 focus:ring-2 focus:ring-rose-500 focus:ring-offset-1;
   }
   .btn-ghost {
     @apply bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 hover:text-slate-900 shadow-none;
   }
   .btn-outline {
-    @apply border border-blue-900 text-blue-900 bg-transparent hover:bg-blue-50;
+    @apply border border-[#00a29a] text-[#00a29a] bg-transparent hover:bg-teal-50;
   }
 
-  /* Enterprise Cards */
+  /* GWSSB Flat Cards */
   .card {
-    @apply rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all;
+    @apply bg-white border border-slate-200 p-4 shadow-sm;
   }
   .card-hover {
-    @apply hover:border-slate-300 hover:shadow-md;
+    @apply hover:border-slate-300 hover:shadow-md transition-all;
   }
 
   /* Form Elements */
   .input {
-    @apply w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-600/20 transition-all;
+    @apply w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-[#00a29a] focus:outline-none focus:ring-1 focus:ring-[#00a29a];
   }
   .label {
-    @apply block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5;
+    @apply block text-xs font-semibold tracking-wide text-slate-700 mb-1;
   }
 
   /* Corporate Badges */
   .badge {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold;
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide;
   }
   .badge-success {
-    @apply bg-emerald-50 text-emerald-700 border border-emerald-200;
+    @apply bg-emerald-100 text-emerald-800 border border-emerald-200;
   }
   .badge-warning {
-    @apply bg-amber-50 text-amber-700 border border-amber-200;
+    @apply bg-amber-100 text-amber-800 border border-amber-200;
   }
   .badge-danger {
-    @apply bg-rose-50 text-rose-700 border border-rose-200;
+    @apply bg-rose-100 text-rose-800 border border-rose-200;
   }
   .badge-info {
-    @apply bg-blue-50 text-blue-800 border border-blue-200;
+    @apply bg-[#e6f4f1] text-[#00a29a] border border-[#00a29a]/20;
   }
   .badge-neutral {
     @apply bg-slate-100 text-slate-700 border border-slate-200;
