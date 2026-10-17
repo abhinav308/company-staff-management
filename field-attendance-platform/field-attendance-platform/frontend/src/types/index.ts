@@ -136,6 +136,7 @@ export interface LivePoint {
   longitude: number | null;
   last_location_at: string | null;
   punch_in_at: string;
+  accuracy?: number | null;
 }
 
 export interface AdminSummary {
@@ -143,6 +144,7 @@ export interface AdminSummary {
   active_users: number;
   currently_tracking: number;
   location_unavailable: number;
+  paused_offline?: number;
   today_punch_ins: number;
   today_punch_outs: number;
   completed_sessions: number;

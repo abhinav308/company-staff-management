@@ -155,6 +155,13 @@ python manage.py test
 |---|---|---|
 | `VITE_API_URL` | `/api` | Base URL for backend REST API |
 | `VITE_WS_URL` | `ws://localhost:8000` | Base URL for WebSockets (use `wss://` in production) |
+| `VITE_MAP_API_KEY` | *(empty)* | Optional API key for MapTiler or Stadia Maps vector tiles |
+| `VITE_MAP_STYLE` | *(empty)* | Optional style preset (`streets-v2`, `dataviz`, `alidade-smooth`, or custom JSON URL) |
+
+#### Map Provider Terms & Free-Tier Limits
+- **MapTiler Cloud**: Free tier allows up to **100,000 requests/month** with vector tile rendering and 3D buildings. Requires sign-up at [maptiler.com](https://www.maptiler.com).
+- **Stadia Maps**: Free tier provides up to **200,000 map views/month** for development and non-commercial usage. Requires sign-up at [stadiamaps.com](https://stadiamaps.com).
+- **OpenStreetMap Raster Fallback**: When `VITE_MAP_API_KEY` is not provided, the platform automatically falls back to standard OpenStreetMap raster tiles with `referrerPolicy: 'origin'`, full attribution compliance, and zero watermark overlays. A non-intrusive demo badge reminds administrators to configure an API key for production vector rendering.
 
 ---
 

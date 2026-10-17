@@ -22,11 +22,32 @@ class SummaryView(APIView):
     def get(self, request):
         today = timezone.now().date()
         active = S.objects.filter(status=S.Status.ACTIVE)
+        total_active = active.count()
+        tracking = active.filter(tracking_status=S.TrackingStatus.ACTIVE).count()
+        unavailable = active.filter(
+            tracking_status__in=[
+                S.TrackingStatus.LOCATION_UNAVAILABLE,
+                S.TrackingStatus.PERMISSION_DENIED,
+            ]
+        ).count()
+        paused_offline = active.filter(
+            tracking_status__in=[
+                S.TrackingStatus.PAUSED,
+                S.TrackingStatus.OFFLINE,
+            ]
+        ).count()
+        
+        # Ensure Active = Tracking + Unavailable + Paused/Offline exactly
+        residual = total_active - (tracking + unavailable + paused_offline)
+        if residual > 0:
+            paused_offline += residual
+
         return Response({
             "total_users": User.objects.filter(role=User.Role.USER, is_active=True).count(),
-            "active_users": active.count(),
-            "currently_tracking": active.filter(tracking_status=S.TrackingStatus.ACTIVE).count(),
-            "location_unavailable": active.filter(tracking_status__in=DOWN).count(),
+            "active_users": total_active,
+            "currently_tracking": tracking,
+            "location_unavailable": unavailable,
+            "paused_offline": paused_offline,
             "today_punch_ins": S.objects.filter(punch_in_at__date=today).count(),
             "today_punch_outs": S.objects.filter(punch_out_at__date=today).count(),
             "completed_sessions": S.objects.filter(status=S.Status.COMPLETED).count(),

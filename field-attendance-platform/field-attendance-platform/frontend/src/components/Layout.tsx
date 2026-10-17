@@ -122,9 +122,9 @@ export default function Layout({
       {/* Sidebar Navigation */}
       <aside
         className={`fixed inset-y-0 left-0 z-50 bg-[#1e293b] text-white flex flex-col transition-all duration-300 ease-in-out ${
-          mobileOpen ? 'translate-x-0 w-64' : '-translate-x-full'
+          mobileOpen ? 'translate-x-0 w-72' : '-translate-x-full'
         } md:translate-x-0 md:static md:flex-shrink-0 ${
-          collapsed ? 'md:w-20' : 'md:w-64'
+          collapsed ? 'md:w-20' : 'md:w-72'
         } border-r border-slate-700/60 shadow-xl`}
       >
         {/* Brand Header */}

@@ -24,6 +24,7 @@ def live_payload(s):
         "longitude": s.last_longitude,
         "last_location_at": s.last_location_at.isoformat() if s.last_location_at else None,
         "punch_in_at": s.punch_in_at.isoformat(),
+        "accuracy": s.last_accuracy,
     }
 
 

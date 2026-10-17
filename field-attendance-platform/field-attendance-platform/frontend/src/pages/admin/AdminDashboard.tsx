@@ -123,6 +123,26 @@ export default function AdminDashboard({ defaultTab }: { defaultTab?: AdminTab }
   const [detailLoading, setDetailLoading] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<VisitPhoto | null>(null);
 
+  // Active Session Route Polyline State
+  const [activeSessionPath, setActiveSessionPath] = useState<[number, number][] | undefined>(undefined);
+
+  useEffect(() => {
+    const handler = async (e: any) => {
+      const sessionId = e.detail?.id;
+      if (!sessionId) return;
+      try {
+        const res = await api.get<{ latitude: number; longitude: number }[]>(`/locations/?session=${sessionId}`);
+        if (res.data && res.data.length > 0) {
+          setActiveSessionPath(res.data.map((p) => [p.latitude, p.longitude]));
+        }
+      } catch (err) {
+        console.warn('Failed to fetch route points', err);
+      }
+    };
+    window.addEventListener('map-show-route', handler);
+    return () => window.removeEventListener('map-show-route', handler);
+  }, []);
+
   // Users Tab Filters
   const [q, setQ] = useState('');
   const [activeOnly, setActiveOnly] = useState('');
@@ -631,12 +651,12 @@ export default function AdminDashboard({ defaultTab }: { defaultTab?: AdminTab }
           }}
           className="rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white p-4 shadow-sm hover:shadow-md transition-all text-left relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-blue-400"
         >
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-wider text-blue-100">Total Users</p>
-            <span className="text-[11px] font-semibold bg-blue-500/50 px-2 py-0.5 rounded text-white group-hover:bg-white group-hover:text-blue-700 transition-colors">Users &rarr;</span>
+          <div className="flex items-center justify-between gap-1">
+            <p className="text-xs font-bold uppercase tracking-wider text-blue-100 truncate">Total Users</p>
+            <span className="text-[11px] font-semibold bg-blue-500/50 px-2 py-0.5 rounded text-white group-hover:bg-white group-hover:text-blue-700 transition-colors whitespace-nowrap shrink-0">Users &rarr;</span>
           </div>
           <p className="text-3xl font-extrabold mt-2 tracking-tight">{summary?.total_users ?? '—'}</p>
-          <p className="text-[11px] text-blue-200 mt-1 font-medium">Enrolled staff accounts</p>
+          <p className="text-[11px] text-blue-200 mt-1 font-medium truncate">Enrolled staff accounts</p>
         </button>
 
         {/* 2. Active Users (currently punched in) */}
@@ -648,13 +668,18 @@ export default function AdminDashboard({ defaultTab }: { defaultTab?: AdminTab }
             window.history.pushState(null, '', '/admin/sessions');
           }}
           className="rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white p-4 shadow-sm hover:shadow-md transition-all text-left relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          title={`Active Officers: ${summary?.active_users ?? 0} total on duty (${summary?.currently_tracking ?? 0} tracking, ${summary?.location_unavailable ?? 0} unavailable${summary?.paused_offline ? `, ${summary.paused_offline} paused/offline` : ''})`}
         >
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-wider text-emerald-100">Active Users</p>
-            <span className="text-[11px] font-semibold bg-emerald-500/50 px-2 py-0.5 rounded text-white group-hover:bg-white group-hover:text-emerald-700 transition-colors">Filter &rarr;</span>
+          <div className="flex items-center justify-between gap-1">
+            <p className="text-xs font-bold uppercase tracking-wider text-emerald-100 truncate">Active Users</p>
+            <span className="text-[11px] font-semibold bg-emerald-500/50 px-2 py-0.5 rounded text-white group-hover:bg-white group-hover:text-emerald-700 transition-colors whitespace-nowrap shrink-0">Filter &rarr;</span>
           </div>
           <p className="text-3xl font-extrabold mt-2 tracking-tight">{summary?.active_users ?? '—'}</p>
-          <p className="text-[11px] text-emerald-200 mt-1 font-medium">Currently punched in</p>
+          <p className="text-[11px] text-emerald-200 mt-1 font-medium truncate">
+            {summary
+              ? `${summary.currently_tracking} live · ${summary.location_unavailable} unavail${summary.paused_offline ? ` · ${summary.paused_offline} off` : ''}`
+              : 'Currently punched in'}
+          </p>
         </button>
 
         {/* 3. Currently Tracking */}
@@ -666,12 +691,12 @@ export default function AdminDashboard({ defaultTab }: { defaultTab?: AdminTab }
           }}
           className="rounded-xl bg-gradient-to-br from-cyan-600 to-cyan-700 hover:from-cyan-700 hover:to-cyan-800 text-white p-4 shadow-sm hover:shadow-md transition-all text-left relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-cyan-400"
         >
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-wider text-cyan-100">Currently Tracking</p>
-            <span className="text-[11px] font-semibold bg-cyan-500/50 px-2 py-0.5 rounded text-white group-hover:bg-white group-hover:text-cyan-700 transition-colors">Live Map &rarr;</span>
+          <div className="flex items-center justify-between gap-1">
+            <p className="text-xs font-bold uppercase tracking-wider text-cyan-100 truncate">Currently Tracking</p>
+            <span className="text-[11px] font-semibold bg-cyan-500/50 px-2 py-0.5 rounded text-white group-hover:bg-white group-hover:text-cyan-700 transition-colors whitespace-nowrap shrink-0">Live Map &rarr;</span>
           </div>
           <p className="text-3xl font-extrabold mt-2 tracking-tight">{summary?.currently_tracking ?? Object.keys(live).length}</p>
-          <p className="text-[11px] text-cyan-200 mt-1 font-medium">Live GPS broadcast</p>
+          <p className="text-[11px] text-cyan-200 mt-1 font-medium truncate">Live GPS broadcast</p>
         </button>
 
         {/* 4. Location Unavailable */}
@@ -684,12 +709,12 @@ export default function AdminDashboard({ defaultTab }: { defaultTab?: AdminTab }
           }}
           className="rounded-xl bg-gradient-to-br from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 text-white p-4 shadow-sm hover:shadow-md transition-all text-left relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-rose-400"
         >
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-wider text-rose-100">Location Unavailable</p>
-            <span className="text-[11px] font-semibold bg-rose-500/50 px-2 py-0.5 rounded text-white group-hover:bg-white group-hover:text-rose-700 transition-colors">Audit &rarr;</span>
+          <div className="flex items-center justify-between gap-1">
+            <p className="text-xs font-bold uppercase tracking-wider text-rose-100 truncate">Location Unavailable</p>
+            <span className="text-[11px] font-semibold bg-rose-500/50 px-2 py-0.5 rounded text-white group-hover:bg-white group-hover:text-rose-700 transition-colors whitespace-nowrap shrink-0">Audit &rarr;</span>
           </div>
           <p className="text-3xl font-extrabold mt-2 tracking-tight">{summary?.location_unavailable ?? 0}</p>
-          <p className="text-[11px] text-rose-200 mt-1 font-medium">GPS lost or permission denied</p>
+          <p className="text-[11px] text-rose-200 mt-1 font-medium truncate">GPS lost or permission denied</p>
         </button>
 
         {/* 5. Completed Sessions */}
@@ -702,12 +727,12 @@ export default function AdminDashboard({ defaultTab }: { defaultTab?: AdminTab }
           }}
           className="rounded-xl bg-gradient-to-br from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white p-4 shadow-sm hover:shadow-md transition-all text-left relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-violet-400"
         >
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-wider text-violet-100">Completed Sessions</p>
-            <span className="text-[11px] font-semibold bg-violet-500/50 px-2 py-0.5 rounded text-white group-hover:bg-white group-hover:text-violet-700 transition-colors">Logs &rarr;</span>
+          <div className="flex items-center justify-between gap-1">
+            <p className="text-xs font-bold uppercase tracking-wider text-violet-100 truncate">Completed Sessions</p>
+            <span className="text-[11px] font-semibold bg-violet-500/50 px-2 py-0.5 rounded text-white group-hover:bg-white group-hover:text-violet-700 transition-colors whitespace-nowrap shrink-0">Logs &rarr;</span>
           </div>
           <p className="text-3xl font-extrabold mt-2 tracking-tight">{summary?.completed_sessions ?? 0}</p>
-          <p className="text-[11px] text-violet-200 mt-1 font-medium">Punched-out shift records</p>
+          <p className="text-[11px] text-violet-200 mt-1 font-medium truncate">Punched-out shift records</p>
         </button>
       </div>
 
@@ -757,7 +782,7 @@ export default function AdminDashboard({ defaultTab }: { defaultTab?: AdminTab }
             </div>
 
             {/* Map Container */}
-            <MapView markers={markers} height="55vh" />
+            <MapView markers={markers} path={activeSessionPath} height="65vh" />
           </div>
 
           {/* Below Map: 2-Column Grid (Requirement D: Active Now + Recent Interruptions) */}
@@ -1003,7 +1028,7 @@ export default function AdminDashboard({ defaultTab }: { defaultTab?: AdminTab }
               <span className="badge badge-info">Auto-updating every 30s</span>
             </div>
 
-            <MapView markers={markers} height={520} />
+            <MapView markers={markers} path={activeSessionPath} height="68vh" />
 
             {selectedLiveUser && (
               <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
