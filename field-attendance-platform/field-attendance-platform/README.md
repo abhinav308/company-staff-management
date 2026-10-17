@@ -39,30 +39,46 @@ cd ../backend && python manage.py test
 | Endpoint | Who | Purpose |
 |---|---|---|
 | `POST auth/register/` · `auth/login/` · `auth/refresh/` · `GET auth/me/` | public / any | JWT auth (register always creates `USER`) |
+| `POST auth/logout/` | authenticated | Blacklists refresh token and ends session |
+| `GET auth/health/` | public | Service health check with DB connectivity status |
 | `POST attendance/punch-in/` (multipart: selfie, latitude, longitude, accuracy) | user | Creates session + audit events |
 | `POST attendance/punch-out/` | user | Closes session, final location if provided |
 | `GET attendance/current/` · `history/` | user | Own session/timeline/history |
 | `GET attendance/sessions/<id>/selfie/` | owner or admin | Authenticated selfie download |
 | `POST locations/` | user | Record a point (active session only) |
+| `POST locations/batch/` | user | Flush offline queue with speed sanity checks (<150 km/h) |
 | `GET tracking/config/` · `POST tracking/events/` | user | Server-set interval; report LOCATION_UNAVAILABLE / PERMISSION_DENIED |
-| `GET admin/summary/` · `live/` · `sessions/` · `sessions/<id>/` | admin | Monitoring |
+| `GET admin/summary/` · `live/` · `sessions/` · `sessions/<id>/` | admin | Monitoring & metrics |
 | `GET/PATCH admin/users/` | admin | List/search/filter, enable/disable |
-| `WS /ws/admin/live/?token=<access>` | admin | Live location/status feed |
+| `WS /ws/admin/live/?token=<access>` | admin | Live location/status feed via Channels |
+
+## Background & Management Commands
+
+- **Seed Demo Data:**
+  ```bash
+  python manage.py seed_demo
+  ```
+  Creates demo users (`admin`, `alice`, `bob`, `charlie`), demo attendance sessions with routes, field visits, leave requests, and holidays.
+
+- **Auto-Close Stale Sessions:**
+  ```bash
+  python manage.py close_stale_sessions [--hours 8] [--dry-run]
+  ```
+  Closes sessions where no location update has been received for more than 8 hours (safe for cron/scheduled jobs).
 
 ## Design decisions
 
 - **Server-side authorization:** every admin view uses `IsAdminRole`, which reads the role from the DB. Frontend route guards are UX only.
+- **Offline Resilient Tracking:** when offline, points are buffered locally and automatically flushed to `/api/locations/batch/` upon reconnection.
 - **Tracking interval is configurable** via `TRACKING_INTERVAL_SECONDS` (served to the client).
-- **Interruptions:** the browser reports permission denied / position unavailable → recorded once as `LOCATION_UNAVAILABLE` / `LOCATION_PERMISSION_DENIED`; the next accepted point records `TRACKING_RESUMED`. Nothing tries to bypass privacy controls.
-- **Server timestamps** are used for location records (client clocks aren't trusted).
-- **Selfies** are validated (type, size, real image via Pillow) and served only through an authenticated endpoint. Use S3/R2/Cloudinary storage in production.
-- **Maps** are behind `components/MapView.tsx` (Leaflet + OSM now; swap for Mapbox/Google in that one file).
-- `LOCATION_UPDATED` is defined but not logged per point (would flood the audit table); points live in `LocationRecord`.
-- Data model is simplified: selfie and punch times live on `AttendanceSession` (no separate `PunchRecord`/`Selfie` tables yet).
+- **Interruptions:** the browser reports permission denied / position unavailable → recorded once as `LOCATION_UNAVAILABLE` / `LOCATION_PERMISSION_DENIED`; the next accepted point records `TRACKING_RESUMED`.
+- **Server timestamps** are used for live location records; batch submissions include client timestamps bounded by session lifetime.
+- **Selfies** are validated (type, size, real image via Pillow) and served only through an authenticated endpoint.
+- **Maps** are powered by Leaflet + OSM in `components/MapView.tsx`.
+- **Token Blacklisting**: Logout immediately blacklists the JWT refresh token using SimpleJWT blacklist.
 
-## Known limits / next steps
+## Operational & Next Steps
 
-- Web tracking stops when the tab is suspended or the browser is closed — expected; native apps fix this (Phase 10). The UI tells users to keep the page open.
-- No offline queue yet (failed posts show OFFLINE; points during outages are lost).
-- Add before production: retention/cleanup job for location data, privacy-policy page, WebSocket token via short-lived ticket instead of query string, signed-URL selfie delivery from object storage, Sentry/logging, CI, deployment config.
-- Not yet run end-to-end in this environment (no package install available) — run the tests and `npm run build` first.
+- Schedule `python manage.py close_stale_sessions` to run every 30-60 minutes in production.
+- Geolocation and camera require HTTPS in non-localhost production environments.
+- Use PostgreSQL and Redis in production as configured in `docker-compose.yml`.

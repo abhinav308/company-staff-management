@@ -28,7 +28,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return me.data;
   }, []);
 
-  const logout = useCallback(() => { tokens.clear(); setUser(null); }, []);
+  const logout = useCallback(() => {
+    // Blacklist the refresh token on the server so it can't be reused.
+    const refresh = tokens.refresh;
+    if (refresh) {
+      api.post('/auth/logout/', { refresh }).catch(() => {/* ignore – still log out locally */});
+    }
+    tokens.clear();
+    setUser(null);
+  }, []);
 
   return <Ctx.Provider value={{ user, loading, login, logout }}>{children}</Ctx.Provider>;
 }
