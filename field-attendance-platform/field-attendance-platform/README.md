@@ -1,84 +1,192 @@
-# Location-Based Attendance & Field Activity Tracking Platform (MVP)
+# Location-Based Attendance & Field Activity Tracking Platform
 
-Consent-based, session-scoped field attendance: **Login → Punch In (selfie) → Location permission → Tracking → Punch Out**,
-with an admin dashboard (summary, live map, users, per-user route, selfie, event timeline).
+[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-15%2F15%20Passing-brightgreen)](file:///c:/Users/Abhinav/Desktop/Ncode/field-attendance-platform/field-attendance-platform/backend)
+[![Frontend Build](https://img.shields.io/badge/Frontend-Vite%20%2B%20TypeScript%20Passing-blue)](file:///c:/Users/Abhinav/Desktop/Ncode/field-attendance-platform/field-attendance-platform/frontend)
+[![Design System](https://img.shields.io/badge/Aesthetics-TailwindCSS%20Accessible-indigo)](file:///c:/Users/Abhinav/Desktop/Ncode/field-attendance-platform/field-attendance-platform/frontend)
 
-- **Backend:** Django 5 + DRF + SimpleJWT + Channels (`backend/`)
-- **Frontend:** React + TypeScript + Vite + Tailwind (`frontend/`)
-- **DB:** PostgreSQL (SQLite fallback for quick local start)
+Consent-based, session-scoped field attendance and real-time monitoring platform:  
+**Login → Punch In (selfie) → Location permission → Tracking & Offline Sync → Punch Out**, with an Admin Command Center (summary KPIs, real-time WebSocket map, user search/filter, route playback, evidence photos, event timeline, and CSV export).
 
-## Run locally
+---
 
-```bash
-# optional: Postgres + Redis
-docker compose up -d
+## Architecture Overview
 
-# backend
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env            # then export the vars (or use your own loader); set DB_NAME to use Postgres
-python manage.py makemigrations accounts attendance locations tracking
-python manage.py migrate
-python manage.py createsuperuser   # superusers automatically get role ADMIN
-python manage.py runserver         # ASGI via daphne (HTTP + WebSocket on :8000)
-
-# frontend
-cd ../frontend
-cp .env.example .env
-npm install && npm run dev         # http://localhost:5173
-
-# tests
-cd ../backend && python manage.py test
+```text
++-----------------------------------------------------------------------------------+
+|                                CLIENT APPLICATIONS                                |
+|                                                                                   |
+|   Field User Portal (React 18 + PWA)             Admin Command Center (React 18)   |
+|   - Punch In with Camera Selfie                  - Real-time Leaflet Map          |
+|   - High-precision Geolocation tracking         - Live WebSockets status pins    |
+|   - Offline queue (localStorage)                - Route playback & History       |
+|   - Field Visit Logs with Evidence Photos       - User management (Enable/Disable)|
++------------------------------------------+----------------------------------------+
+                                           |
+                               HTTP / WSS  | (JWT Auth + SimpleJWT Blacklist)
+                                           v
++-----------------------------------------------------------------------------------+
+|                         BACKEND SERVICE (Django 5 + ASGI)                         |
+|                                                                                   |
+|   Daphne ASGI Server / Channels Protocol Router                                   |
+|   ├── REST APIs (Django REST Framework):                                          |
+|   │   ├── /api/auth/        (Login, Register, Logout w/ Blacklist, Health)       |
+|   │   ├── /api/attendance/  (Punch In, Punch Out, Current, History, Visits)      |
+|   │   ├── /api/locations/   (Single & Batch location ingest with speed checks)    |
+|   │   └── /api/admin/       (Live overview, Summary cards, Audit events, Users)   |
+|   └── WebSockets Consumer (/ws/admin/live/?token=<JWT>):                          |
+|       └── Real-time broadcast channel for active session pins & status changes   |
++------------------------------------------+----------------------------------------+
+                                           |
+                    +----------------------+----------------------+
+                    |                                             |
+                    v                                             v
+     +------------------------------+             +-------------------------------+
+     |  PostgreSQL 16 (or SQLite)   |             |            Redis 7            |
+     |  - User roles & profiles     |             |  - Channels Layer Broker      |
+     |  - Attendance sessions       |             |  - Real-time Pub/Sub groups   |
+     |  - Location breadcrumbs      |             +-------------------------------+
+     |  - Audit tracking events     |
+     +------------------------------+
 ```
 
-> Geolocation and camera need a secure context: `localhost` works; any other host needs HTTPS.
+---
 
-## API (all under `/api/`)
+## Key Features
 
-| Endpoint | Who | Purpose |
+1. **Session-Scoped & Consent-Based Tracking:**
+   - Tracking **never** occurs outside active duty hours.
+   - Requires explicit employee punch-in accompanied by a verified camera selfie.
+   - Immediate cessation upon punch-out.
+2. **Offline Resilience & Batch Ingest:**
+   - Geolocation breadcrumbs continue recording during network outages.
+   - Buffered locally in `localStorage` and synchronized via `/api/locations/batch/` with velocity checks (`< 150 km/h`).
+3. **Audited Transparency:**
+   - Browser permission denials or GPS outages trigger `LOCATION_UNAVAILABLE` audit events.
+   - Regained GPS triggers `TRACKING_RESUMED`, visible on the employee's timeline and admin map.
+4. **Hardened Security:**
+   - Role enforcement validated strictly on the backend (`IsAdminRole`).
+   - Selfies and evidence photos served through authenticated streaming views.
+   - Logout blacklists the JWT refresh token on the server.
+5. **Background Session Auto-Closer:**
+   - Includes `python manage.py close_stale_sessions` to automatically close abandoned shifts after 8 hours of inactivity.
+
+---
+
+## Quick Start (Run Locally)
+
+### 1. Start Services (Postgres + Redis)
+```bash
+docker compose up -d
+```
+
+### 2. Backend Setup
+```bash
+cd backend
+
+# Create and activate virtual environment
+python -m venv .venv
+# Windows:
+.\.venv\Scripts\activate
+# Linux/macOS:
+# source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run migrations
+python manage.py migrate
+
+# Seed complete demo data (Admin + 5 Field Officers with routes & visits)
+python manage.py seed_demo
+
+# Run Daphne ASGI server (HTTP + WebSockets on port 8000)
+python manage.py runserver
+```
+
+### 3. Frontend Setup
+```bash
+cd ../frontend
+
+# Install dependencies
+npm install
+
+# Start Vite dev server (runs on http://localhost:5173)
+npm run dev
+```
+
+### 4. Run Automated Test Suite
+```bash
+cd backend
+python manage.py test
+```
+*(All 15 test suites verify role permissions, privacy isolation, batch location speed checks, stale session closing, and token blacklisting).*
+
+---
+
+## Seed Accounts (Quick Demo)
+
+| Role | Username | Password | Notes |
+|---|---|---|---|
+| **Administrator** | `admin` | `Admin@12345` | Full access to Admin Command Center, live map, user controls |
+| **Field Officer** | `arjun` | `Demo@12345` | Active field session with realistic route in Surat, India |
+| **Field Officer** | `priya` | `Demo@12345` | Field officer with completed past shift sessions |
+| **Field Officer** | `ravi` | `Demo@12345` | Field officer with field visit notes and evidence |
+
+---
+
+## Environment Variables
+
+### Backend (`backend/.env`)
+| Variable | Default | Description |
 |---|---|---|
-| `POST auth/register/` · `auth/login/` · `auth/refresh/` · `GET auth/me/` | public / any | JWT auth (register always creates `USER`) |
-| `POST auth/logout/` | authenticated | Blacklists refresh token and ends session |
-| `GET auth/health/` | public | Service health check with DB connectivity status |
-| `POST attendance/punch-in/` (multipart: selfie, latitude, longitude, accuracy) | user | Creates session + audit events |
-| `POST attendance/punch-out/` | user | Closes session, final location if provided |
-| `GET attendance/current/` · `history/` | user | Own session/timeline/history |
-| `GET attendance/sessions/<id>/selfie/` | owner or admin | Authenticated selfie download |
-| `POST locations/` | user | Record a point (active session only) |
-| `POST locations/batch/` | user | Flush offline queue with speed sanity checks (<150 km/h) |
-| `GET tracking/config/` · `POST tracking/events/` | user | Server-set interval; report LOCATION_UNAVAILABLE / PERMISSION_DENIED |
-| `GET admin/summary/` · `live/` · `sessions/` · `sessions/<id>/` | admin | Monitoring & metrics |
-| `GET/PATCH admin/users/` | admin | List/search/filter, enable/disable |
-| `WS /ws/admin/live/?token=<access>` | admin | Live location/status feed via Channels |
+| `SECRET_KEY` | `dev-insecure-...` | Django secret key (must be set in production) |
+| `DEBUG` | `True` | Set to `False` in production |
+| `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated list of valid host headers |
+| `DB_NAME` | `field_attendance` | PostgreSQL database name (falls back to SQLite if omitted) |
+| `DB_USER` | `postgres` | PostgreSQL username |
+| `DB_PASSWORD` | `postgres` | PostgreSQL password |
+| `DB_HOST` | `localhost` | PostgreSQL host |
+| `DB_PORT` | `5432` | PostgreSQL port |
+| `REDIS_URL` | `redis://localhost:6379/1` | Redis URL for Channels layer |
+| `TRACKING_INTERVAL_SECONDS` | `30` | Configurable interval for periodic location updates |
 
-## Background & Management Commands
+### Frontend (`frontend/.env`)
+| Variable | Default | Description |
+|---|---|---|
+| `VITE_API_URL` | `/api` | Base URL for backend REST API |
+| `VITE_WS_URL` | `ws://localhost:8000` | Base URL for WebSockets (use `wss://` in production) |
 
-- **Seed Demo Data:**
-  ```bash
-  python manage.py seed_demo
-  ```
-  Creates demo users (`admin`, `alice`, `bob`, `charlie`), demo attendance sessions with routes, field visits, leave requests, and holidays.
+---
 
-- **Auto-Close Stale Sessions:**
-  ```bash
-  python manage.py close_stale_sessions [--hours 8] [--dry-run]
-  ```
-  Closes sessions where no location update has been received for more than 8 hours (safe for cron/scheduled jobs).
+## API Reference (All endpoints under `/api/`)
 
-## Design decisions
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `POST` | `auth/register/` | Public | Employee registration (always assigned `USER` role) |
+| `POST` | `auth/login/` | Public | Returns JWT access & refresh tokens |
+| `POST` | `auth/refresh/` | Public | Refreshes expired access token |
+| `POST` | `auth/logout/` | Authenticated | Blacklists refresh token |
+| `GET` | `auth/health/` | Public | Service health & database connectivity check |
+| `POST` | `attendance/punch-in/` | User | Starts shift (multipart: selfie + GPS coordinates) |
+| `POST` | `attendance/punch-out/` | User | Concludes shift, sets tracking to PUNCHED_OUT |
+| `GET` | `attendance/current/` | User | Active shift session and current tracking state |
+| `GET` | `attendance/history/` | User | Historical attendance records & duration summaries |
+| `GET` | `attendance/sessions/<id>/selfie/` | Owner / Admin | Authenticated selfie download |
+| `POST` | `attendance/visits/` | User | Log field client visit with location & evidence |
+| `POST` | `locations/` | User | Submit real-time location coordinate |
+| `POST` | `locations/batch/` | User | Flush offline breadcrumbs (with speed sanity checks) |
+| `GET` | `tracking/config/` | User | Client sync for tracking interval |
+| `POST` | `tracking/events/` | User | Log audit event (permission denied, GPS unavailable) |
+| `GET` | `admin/summary/` | Admin | KPI cards (active users, total hours, present count) |
+| `GET` | `admin/live/` | Admin | Real-time map pins for all active field staff |
+| `GET` | `admin/sessions/` | Admin | Filterable session records with CSV export |
+| `GET` | `admin/sessions/<id>/` | Admin | Detailed route breadcrumbs and event audit timeline |
+| `GET/PATCH` | `admin/users/` | Admin | Employee roster search, filter, enable/disable toggle |
+| `WS` | `/ws/admin/live/?token=<jwt>`| Admin | Live location & status stream |
 
-- **Server-side authorization:** every admin view uses `IsAdminRole`, which reads the role from the DB. Frontend route guards are UX only.
-- **Offline Resilient Tracking:** when offline, points are buffered locally and automatically flushed to `/api/locations/batch/` upon reconnection.
-- **Tracking interval is configurable** via `TRACKING_INTERVAL_SECONDS` (served to the client).
-- **Interruptions:** the browser reports permission denied / position unavailable → recorded once as `LOCATION_UNAVAILABLE` / `LOCATION_PERMISSION_DENIED`; the next accepted point records `TRACKING_RESUMED`.
-- **Server timestamps** are used for live location records; batch submissions include client timestamps bounded by session lifetime.
-- **Selfies** are validated (type, size, real image via Pillow) and served only through an authenticated endpoint.
-- **Maps** are powered by Leaflet + OSM in `components/MapView.tsx`.
-- **Token Blacklisting**: Logout immediately blacklists the JWT refresh token using SimpleJWT blacklist.
+---
 
-## Operational & Next Steps
+## Documentation Links
 
-- Schedule `python manage.py close_stale_sessions` to run every 30-60 minutes in production.
-- Geolocation and camera require HTTPS in non-localhost production environments.
-- Use PostgreSQL and Redis in production as configured in `docker-compose.yml`.
+- **[Privacy & Data Protection Policy](docs/PRIVACY.md)**: Full details on data minimization, user rights, retention, and consent mechanisms.
+- **[Technical Limitations & Mobile Roadmap](docs/LIMITATIONS.md)**: Details on browser tab throttling, OS power management, and the native mobile app architecture.

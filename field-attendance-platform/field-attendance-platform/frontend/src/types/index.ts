@@ -108,6 +108,11 @@ export interface Session {
 
 export interface TrackingEvent {
   id: number;
+  user?: number;
+  username?: string;
+  display_name?: string;
+  employee_id?: string;
+  session_id?: number;
   event_type: string;
   timestamp: string;
   metadata: Record<string, unknown>;

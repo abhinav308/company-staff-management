@@ -10,15 +10,23 @@ const LABEL: Record<TS, [string, string]> = {
 };
 
 export default function TrackingStatus({ status, lastUpdate }: { status: TS; lastUpdate: string }) {
-  const [icon, text] = LABEL[status];
+  const [icon, text] = LABEL[status] || ['⚪', status];
   return (
-    <div className="space-y-1">
-      <p className="font-medium">{icon} {text}</p>
+    <div role="status" aria-live="polite" className="space-y-1">
+      <p className="font-medium flex items-center gap-1.5">
+        <span aria-hidden="true">{icon}</span>
+        <span>{text}</span>
+      </p>
       <p className="text-sm text-slate-500">Last location update: {lastUpdate}</p>
       {status === 'ACTIVE' && (
-        <p className="rounded-lg bg-green-50 p-2 text-xs text-green-800">
+        <p className="rounded-lg bg-green-50 p-2 text-xs text-green-800 border border-green-200">
           Your location is being shared with the authorized administrator while your session is active.
           Keep this page open for best results. Tracking stops when you punch out.
+        </p>
+      )}
+      {status === 'OFFLINE' && (
+        <p className="rounded-lg bg-slate-100 p-2 text-xs text-slate-700 border border-slate-200">
+          Offline points are saved locally on your device and will synchronize automatically when you reconnect.
         </p>
       )}
     </div>

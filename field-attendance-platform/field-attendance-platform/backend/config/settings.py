@@ -106,7 +106,12 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
 
 TRACKING_INTERVAL_SECONDS = int(os.environ.get("TRACKING_INTERVAL_SECONDS", "30"))
 
-CORS_ALLOWED_ORIGINS = [o for o in os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",") if o]
+CORS_ALLOWED_ORIGINS = [
+    o for o in os.environ.get(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:5173,https://localhost:5173,http://127.0.0.1:5173,https://127.0.0.1:5173,http://localhost:5174,https://localhost:5174,http://127.0.0.1:5174,https://127.0.0.1:5174"
+    ).split(",") if o
+]
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
     CSRF_TRUSTED_ORIGINS = [

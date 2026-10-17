@@ -4,6 +4,7 @@ from .admin_views import (
     AdminVisitDetailView,
     AdminVisitExportCsvView,
     AdminVisitListView,
+    AdminEventListView,
     DepartmentListView,
     LiveView,
     SessionDetailView,
@@ -22,4 +23,5 @@ urlpatterns = [
     path("visits/export-csv/", AdminVisitExportCsvView.as_view()),
     path("visits/<int:pk>/", AdminVisitDetailView.as_view()),
     path("departments/", DepartmentListView.as_view()),
+    path("events/", AdminEventListView.as_view()),
 ]

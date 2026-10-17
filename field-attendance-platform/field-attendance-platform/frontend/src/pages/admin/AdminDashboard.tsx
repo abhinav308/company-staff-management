@@ -8,32 +8,50 @@ import api, { tokens, WS_URL } from '../../services/api';
 import { fmtDate, fmtDuration, fmtTime, STATUS_COLOR } from '../../services/format';
 import type { AdminSummary, AdminUser, AdminVisitDetail, LivePoint, Page, Session, Visit, VisitPhoto } from '../../types';
 
-type AdminTab = 'overview' | 'users' | 'map' | 'visits' | 'attendance';
+type AdminTab = 'overview' | 'users' | 'map' | 'visits' | 'attendance' | 'audit';
 
-const VISIT_CATEGORIES: { id: string; label: string }[] = [
-  { id: '', label: 'All Categories' },
-  { id: 'SITE_INSPECTION', label: 'Site Inspection & Audit' },
-  { id: 'CLIENT_MEETING', label: 'Client / Stakeholder Meeting' },
-  { id: 'TECHNICAL_VERIFICATION', label: 'Technical Verification' },
-  { id: 'INFRASTRUCTURE_AUDIT', label: 'Infrastructure Audit' },
-  { id: 'GOVERNMENT_LIAISON', label: 'Government Liaison' },
-  { id: 'EMERGENCY_DISPATCH', label: 'Emergency Dispatch' },
-  { id: 'OTHER', label: 'Other Field Visit' },
+type ConnState = 'connected' | 'connecting' | 'offline';
+
+const AUDIT_EVENT_CHOICES = [
+  { id: '', label: 'All Event Types' },
+  { id: 'LOGIN', label: 'Login' },
+  { id: 'PUNCH_IN', label: 'Punch In' },
+  { id: 'SELFIE_UPLOADED', label: 'Selfie Uploaded' },
+  { id: 'LOCATION_PERMISSION_GRANTED', label: 'Permission Granted' },
+  { id: 'LOCATION_PERMISSION_DENIED', label: 'Permission Denied' },
+  { id: 'LOCATION_UNAVAILABLE', label: 'Location Unavailable' },
+  { id: 'TRACKING_STARTED', label: 'Tracking Started' },
+  { id: 'TRACKING_RESUMED', label: 'Tracking Resumed' },
+  { id: 'VISIT_STARTED', label: 'Visit Started' },
+  { id: 'VISIT_PHOTO_UPLOADED', label: 'Evidence Photo Uploaded' },
+  { id: 'VISIT_COMPLETED', label: 'Visit Completed' },
+  { id: 'PUNCH_OUT', label: 'Punch Out' },
+  { id: 'SESSION_COMPLETED', label: 'Session Completed' },
+  { id: 'LOGOUT', label: 'Logout' },
 ];
 
-const VISIT_STATUSES: { id: string; label: string }[] = [
+const VISIT_CATEGORIES = [
+  { id: '', label: 'All Visit Categories' },
+  { id: 'SITE_INSPECTION', label: 'Site Inspection' },
+  { id: 'CLIENT_MEETING', label: 'Client Meeting' },
+  { id: 'TECHNICAL_VERIFICATION', label: 'Technical Verification' },
+  { id: 'INFRASTRUCTURE_AUDIT', label: 'Infrastructure / IT Audit' },
+  { id: 'OTHER', label: 'Other Official Work' },
+];
+
+const VISIT_STATUSES = [
   { id: '', label: 'All Statuses' },
-  { id: 'IN_PROGRESS', label: 'In Progress (Active)' },
+  { id: 'IN_PROGRESS', label: 'In Progress' },
   { id: 'COMPLETED', label: 'Completed' },
   { id: 'CANCELLED', label: 'Cancelled' },
 ];
 
-const VISIT_OUTCOMES: { id: string; label: string }[] = [
+const VISIT_OUTCOMES = [
   { id: '', label: 'All Outcomes' },
-  { id: 'PENDING', label: 'Pending / In Progress' },
-  { id: 'SATISFACTORY', label: 'Satisfactory / Successful' },
+  { id: 'PENDING', label: 'Pending' },
+  { id: 'SATISFACTORY', label: 'Satisfactory' },
   { id: 'ACTION_REQUIRED', label: 'Action Required' },
-  { id: 'FOLLOW_UP_NEEDED', label: 'Follow-Up Needed' },
+  { id: 'FOLLOW_UP_NEEDED', label: 'Follow-up Needed' },
   { id: 'CANCELLED', label: 'Cancelled' },
 ];
 
@@ -41,25 +59,48 @@ const CATEGORY_NAMES: Record<string, string> = {
   SITE_INSPECTION: 'Site Inspection',
   CLIENT_MEETING: 'Client Meeting',
   TECHNICAL_VERIFICATION: 'Technical Verification',
-  INFRASTRUCTURE_AUDIT: 'Infrastructure Audit',
-  GOVERNMENT_LIAISON: 'Govt Liaison',
-  EMERGENCY_DISPATCH: 'Emergency Dispatch',
-  OTHER: 'Field Visit',
+  INFRASTRUCTURE_AUDIT: 'Infrastructure / IT Audit',
+  OTHER: 'Other Official Work',
 };
 
-export default function AdminDashboard() {
+export default function AdminDashboard({ defaultTab }: { defaultTab?: AdminTab }) {
   const nav = useNavigate();
   const [activeTab, setActiveTab] = useState<AdminTab>(() => {
+    if (defaultTab) return defaultTab;
+    const path = window.location.pathname;
+    if (path.includes('/map')) return 'map';
+    if (path.includes('/users')) return 'users';
+    if (path.includes('/sessions')) return 'attendance';
+    if (path.includes('/reports')) return 'visits';
+    if (path.includes('/audit')) return 'audit';
     const tabParam = new URLSearchParams(window.location.search).get('tab');
-    if (tabParam === 'visits' || tabParam === 'attendance' || tabParam === 'users' || tabParam === 'map') {
+    if (tabParam === 'visits' || tabParam === 'attendance' || tabParam === 'users' || tabParam === 'map' || tabParam === 'audit') {
       return tabParam as AdminTab;
     }
     return 'overview';
   });
+
+  useEffect(() => {
+    if (defaultTab && defaultTab !== activeTab) {
+      setActiveTab(defaultTab);
+    }
+  }, [defaultTab]);
+
   const [summary, setSummary] = useState<AdminSummary | null>(null);
   const [live, setLive] = useState<Record<number, LivePoint>>({});
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [recentInterruptions, setRecentInterruptions] = useState<any[]>([]);
+
+  // Audit Log Tab State
+  const [auditEvents, setAuditEvents] = useState<any[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditTotalCount, setAuditTotalCount] = useState(0);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditSearch, setAuditSearch] = useState('');
+  const [auditEventType, setAuditEventType] = useState('');
+  const [auditDateFrom, setAuditDateFrom] = useState('');
+  const [auditDateTo, setAuditDateTo] = useState('');
 
   // Field Visits Tab State
   const [visits, setVisits] = useState<Visit[]>([]);
@@ -95,18 +136,34 @@ export default function AdminDashboard() {
   const [exportingCsv, setExportingCsv] = useState(false);
   const [attLoading, setAttLoading] = useState(false);
 
-  const [wsOk, setWsOk] = useState(false);
+  // Connection State: 'connected' | 'connecting' | 'offline'
+  const [connState, setConnState] = useState<ConnState>('connecting');
   const [selectedLiveUser, setSelectedLiveUser] = useState<LivePoint | null>(null);
 
   const refreshSummary = () =>
-    api.get<AdminSummary>('/admin/summary/').then((r) => setSummary(r.data));
+    api.get<AdminSummary>('/admin/summary/').then((r) => setSummary(r.data)).catch(() => undefined);
+
+  const loadRecentInterruptions = () => {
+    api
+      .get('/admin/events/', {
+        params: { event_type: 'LOCATION_UNAVAILABLE' },
+      })
+      .then((r) => {
+        const results = r.data.results || r.data;
+        if (Array.isArray(results)) {
+          setRecentInterruptions(results.slice(0, 10));
+        }
+      })
+      .catch(() => undefined);
+  };
 
   // Initial load
   useEffect(() => {
     refreshSummary();
+    loadRecentInterruptions();
     api.get<LivePoint[]>('/admin/live/').then((r) =>
       setLive(Object.fromEntries(r.data.map((p) => [p.session_id, p])))
-    );
+    ).catch(() => undefined);
     api.get<string[]>('/admin/departments/').then((r) => {
       if (r.data && r.data.length > 0) setDepartments(r.data);
     }).catch(() => undefined);
@@ -140,38 +197,145 @@ export default function AdminDashboard() {
         .get<Page<AdminUser>>('/admin/users/', {
           params: { search: q || undefined, active: activeOnly || undefined },
         })
-        .then((r) => setUsers(r.data.results));
+        .then((r) => setUsers(r.data.results || []))
+        .catch(() => undefined);
     }, 250);
     return () => clearTimeout(t);
   }, [q, activeOnly]);
 
-  // Live updates over WebSocket
+  // Filtered audit events loader
+  const loadAuditEvents = (pageToLoad = auditPage) => {
+    setAuditLoading(true);
+    api
+      .get('/admin/events/', {
+        params: {
+          page: pageToLoad,
+          search: auditSearch.trim() || undefined,
+          event_type: auditEventType || undefined,
+          date_from: auditDateFrom || undefined,
+          date_to: auditDateTo || undefined,
+        },
+      })
+      .then((r) => {
+        const data = r.data;
+        if (data.results) {
+          setAuditEvents(data.results);
+          setAuditTotalCount(data.count || data.results.length);
+        } else if (Array.isArray(data)) {
+          setAuditEvents(data);
+          setAuditTotalCount(data.length);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setAuditLoading(false));
+  };
+
+  useEffect(() => {
+    if (activeTab === 'audit') {
+      loadAuditEvents(auditPage);
+    }
+  }, [activeTab, auditPage, auditEventType, auditDateFrom, auditDateTo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Live updates over WebSocket with auto-refresh, exponential backoff, and 15s polling fallback
   useEffect(() => {
     let ws: WebSocket | null = null;
     let stop = false;
-    let retry: number;
-    const connect = () => {
-      ws = new WebSocket(`${WS_URL}/ws/admin/live/?token=${tokens.access}`);
-      ws.onopen = () => setWsOk(true);
-      ws.onclose = () => {
-        setWsOk(false);
-        if (!stop) retry = window.setTimeout(connect, 3000);
-      };
-      ws.onmessage = (m) => {
-        const p: LivePoint = JSON.parse(m.data);
-        setLive((prev) => {
-          const next = { ...prev };
-          if (p.status === 'COMPLETED') delete next[p.session_id];
-          else next[p.session_id] = p;
-          return next;
-        });
+    let retryDelay = 2000;
+    let retryTimer: number;
+
+    const pollLive = async () => {
+      try {
+        const res = await api.get<LivePoint[]>('/admin/live/');
+        setLive(Object.fromEntries(res.data.map((p) => [p.session_id, p])));
         refreshSummary();
-      };
+        loadRecentInterruptions();
+      } catch {
+        // Polling error ignored
+      }
     };
+
+    // Polling fallback interval while offline or disconnected
+    const pollInterval = setInterval(() => {
+      if (connState !== 'connected') {
+        pollLive();
+      }
+    }, 15000);
+
+    const getFreshToken = async () => {
+      if (tokens.refresh) {
+        try {
+          const r = await api.post('/auth/refresh/', { refresh: tokens.refresh });
+          tokens.set(r.data.access, r.data.refresh);
+          return r.data.access;
+        } catch {
+          return tokens.access;
+        }
+      }
+      return tokens.access;
+    };
+
+    const connect = async () => {
+      if (stop) return;
+      setConnState('connecting');
+
+      const token = await getFreshToken();
+      if (!token) {
+        setConnState('offline');
+        return;
+      }
+
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host || 'localhost:5173';
+      const wsUrl = `${proto}//${host}/ws/admin/live/?token=${token}`;
+
+      try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          setConnState('connected');
+          retryDelay = 2000; // reset backoff
+          pollLive(); // immediate fresh sync
+        };
+
+        ws.onmessage = (m) => {
+          try {
+            const p: LivePoint = JSON.parse(m.data);
+            setLive((prev) => {
+              const next = { ...prev };
+              if (p.status === 'COMPLETED') delete next[p.session_id];
+              else next[p.session_id] = p;
+              return next;
+            });
+            refreshSummary();
+            loadRecentInterruptions();
+          } catch (e) {
+            console.error('Failed to parse live point:', e);
+          }
+        };
+
+        ws.onclose = (ev) => {
+          if (stop) return;
+          setConnState(ev.code === 4401 ? 'offline' : 'connecting');
+          retryTimer = window.setTimeout(connect, retryDelay);
+          retryDelay = Math.min(retryDelay * 1.5, 30000);
+        };
+
+        ws.onerror = () => {
+          ws?.close();
+        };
+      } catch {
+        setConnState('offline');
+        retryTimer = window.setTimeout(connect, retryDelay);
+        retryDelay = Math.min(retryDelay * 1.5, 30000);
+      }
+    };
+
     connect();
+
     return () => {
       stop = true;
-      clearTimeout(retry);
+      clearInterval(pollInterval);
+      clearTimeout(retryTimer);
       ws?.close();
     };
   }, []);
@@ -420,21 +584,26 @@ export default function AdminDashboard() {
         .filter((p) => p.latitude != null && p.longitude != null)
         .map((p) => ({
           id: p.session_id,
+          userId: p.user_id,
           lat: p.latitude!,
           lng: p.longitude!,
           color: STATUS_COLOR[p.tracking_status],
-          label: `${p.display_name} (${p.tracking_status})`,
+          status: p.tracking_status,
+          label: p.display_name,
+          punchInAt: p.punch_in_at ? fmtTime(p.punch_in_at) : undefined,
+          lastUpdate: p.last_location_at ? fmtTime(p.last_location_at) : undefined,
           onClick: () => setSelectedLiveUser(p),
         })),
     [live]
   );
 
   const tabs = [
-    { id: 'overview', label: 'Executive Overview' },
-    { id: 'users', label: 'Employees & Users', badge: users.length },
-    { id: 'map', label: 'Live Monitoring Map', badge: Object.keys(live).length },
-    { id: 'visits', label: 'Field Visits', badge: visitTotalCount },
-    { id: 'attendance', label: 'Attendance Records', badge: sessions.length },
+    { id: 'overview', label: 'Dashboard', icon: 'overview', route: '/admin' },
+    { id: 'map', label: 'Live Field Map', icon: 'map', route: '/admin/map', badge: Object.keys(live).length },
+    { id: 'users', label: 'Field Personnel', icon: 'users', route: '/admin/users', badge: users.length },
+    { id: 'attendance', label: 'Sessions & Attendance', icon: 'attendance', route: '/admin/sessions', badge: sessions.length },
+    { id: 'visits', label: 'Field Reports', icon: 'reports', route: '/admin/reports', badge: visitTotalCount },
+    { id: 'audit', label: 'Audit Log', icon: 'audit', route: '/admin/audit', badge: auditTotalCount },
   ];
 
   return (
@@ -443,122 +612,292 @@ export default function AdminDashboard() {
       subtitle="Ncode Solution IT Division (GNFC) · Central Operations"
       tabs={tabs}
       activeTab={activeTab}
-      onTabChange={(t) => setActiveTab(t as AdminTab)}
+      onTabChange={(t) => {
+        setActiveTab(t as AdminTab);
+        const targetRoute = t === 'overview' ? '/admin' : `/admin/${t === 'attendance' ? 'sessions' : t === 'visits' ? 'reports' : t}`;
+        if (window.location.pathname !== targetRoute) {
+          window.history.pushState(null, '', targetRoute);
+        }
+      }}
     >
-      {/* Metric Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
-        <div className="rounded-xl bg-[#3b82f6] text-white p-6 shadow-md relative overflow-hidden">
-          <p className="text-xs font-bold uppercase tracking-wider opacity-90 relative z-10">Total Users</p>
-          <p className="text-4xl font-bold mt-2 relative z-10">{summary?.total_users ?? '—'}</p>
-          <div className="absolute right-[-20px] bottom-[-20px] opacity-20">
-            <svg className="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" /></svg>
+      {/* Metric Summary Cards (5 Clickable Cards) */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+        {/* 1. Total Users */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('users');
+            window.history.pushState(null, '', '/admin/users');
+          }}
+          className="rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white p-4 shadow-sm hover:shadow-md transition-all text-left relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-blue-400"
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wider text-blue-100">Total Users</p>
+            <span className="text-[11px] font-semibold bg-blue-500/50 px-2 py-0.5 rounded text-white group-hover:bg-white group-hover:text-blue-700 transition-colors">Users &rarr;</span>
           </div>
-        </div>
-        <div className="rounded-xl bg-[#10b981] text-white p-6 shadow-md relative overflow-hidden">
-          <p className="text-xs font-bold uppercase tracking-wider opacity-90 relative z-10">Active Users</p>
-          <p className="text-4xl font-bold mt-2 relative z-10">{summary?.active_users ?? '—'}</p>
-          <div className="absolute right-[-20px] bottom-[-20px] opacity-20">
-             <svg className="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+          <p className="text-3xl font-extrabold mt-2 tracking-tight">{summary?.total_users ?? '—'}</p>
+          <p className="text-[11px] text-blue-200 mt-1 font-medium">Enrolled staff accounts</p>
+        </button>
+
+        {/* 2. Active Users (currently punched in) */}
+        <button
+          type="button"
+          onClick={() => {
+            setAttStatus('ACTIVE');
+            setActiveTab('attendance');
+            window.history.pushState(null, '', '/admin/sessions');
+          }}
+          className="rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white p-4 shadow-sm hover:shadow-md transition-all text-left relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-emerald-400"
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wider text-emerald-100">Active Users</p>
+            <span className="text-[11px] font-semibold bg-emerald-500/50 px-2 py-0.5 rounded text-white group-hover:bg-white group-hover:text-emerald-700 transition-colors">Filter &rarr;</span>
           </div>
-        </div>
-        <div className="rounded-xl bg-[#ef4444] text-white p-6 shadow-md relative overflow-hidden">
-          <p className="text-xs font-bold uppercase tracking-wider opacity-90 relative z-10">Inactive Users</p>
-          <p className="text-4xl font-bold mt-2 relative z-10">
-            {(summary?.total_users ?? 0) - (summary?.active_users ?? 0)}
-          </p>
-          <div className="absolute right-[-20px] bottom-[-20px] opacity-20">
-             <svg className="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+          <p className="text-3xl font-extrabold mt-2 tracking-tight">{summary?.active_users ?? '—'}</p>
+          <p className="text-[11px] text-emerald-200 mt-1 font-medium">Currently punched in</p>
+        </button>
+
+        {/* 3. Currently Tracking */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('map');
+            window.history.pushState(null, '', '/admin/map');
+          }}
+          className="rounded-xl bg-gradient-to-br from-cyan-600 to-cyan-700 hover:from-cyan-700 hover:to-cyan-800 text-white p-4 shadow-sm hover:shadow-md transition-all text-left relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-cyan-400"
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wider text-cyan-100">Currently Tracking</p>
+            <span className="text-[11px] font-semibold bg-cyan-500/50 px-2 py-0.5 rounded text-white group-hover:bg-white group-hover:text-cyan-700 transition-colors">Live Map &rarr;</span>
           </div>
-        </div>
-        <div className="rounded-xl bg-[#f97316] text-white p-6 shadow-md relative overflow-hidden">
-          <p className="text-xs font-bold uppercase tracking-wider opacity-90 relative z-10">Inspections</p>
-          <p className="text-4xl font-bold mt-2 relative z-10">{summary?.today_visits ?? 0}</p>
-          <div className="absolute right-[-20px] bottom-[-20px] opacity-20">
-             <svg className="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" /><path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm9.707 5.707a1 1 0 00-1.414-1.414L9 12.586l-1.293-1.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+          <p className="text-3xl font-extrabold mt-2 tracking-tight">{summary?.currently_tracking ?? Object.keys(live).length}</p>
+          <p className="text-[11px] text-cyan-200 mt-1 font-medium">Live GPS broadcast</p>
+        </button>
+
+        {/* 4. Location Unavailable */}
+        <button
+          type="button"
+          onClick={() => {
+            setAuditEventType('LOCATION_UNAVAILABLE');
+            setActiveTab('audit');
+            window.history.pushState(null, '', '/admin/audit');
+          }}
+          className="rounded-xl bg-gradient-to-br from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 text-white p-4 shadow-sm hover:shadow-md transition-all text-left relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-rose-400"
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wider text-rose-100">Location Unavailable</p>
+            <span className="text-[11px] font-semibold bg-rose-500/50 px-2 py-0.5 rounded text-white group-hover:bg-white group-hover:text-rose-700 transition-colors">Audit &rarr;</span>
           </div>
-        </div>
+          <p className="text-3xl font-extrabold mt-2 tracking-tight">{summary?.location_unavailable ?? 0}</p>
+          <p className="text-[11px] text-rose-200 mt-1 font-medium">GPS lost or permission denied</p>
+        </button>
+
+        {/* 5. Completed Sessions */}
+        <button
+          type="button"
+          onClick={() => {
+            setAttStatus('COMPLETED');
+            setActiveTab('attendance');
+            window.history.pushState(null, '', '/admin/sessions');
+          }}
+          className="rounded-xl bg-gradient-to-br from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white p-4 shadow-sm hover:shadow-md transition-all text-left relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-violet-400"
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wider text-violet-100">Completed Sessions</p>
+            <span className="text-[11px] font-semibold bg-violet-500/50 px-2 py-0.5 rounded text-white group-hover:bg-white group-hover:text-violet-700 transition-colors">Logs &rarr;</span>
+          </div>
+          <p className="text-3xl font-extrabold mt-2 tracking-tight">{summary?.completed_sessions ?? 0}</p>
+          <p className="text-[11px] text-violet-200 mt-1 font-medium">Punched-out shift records</p>
+        </button>
       </div>
 
       {/* ================= TAB 1: OVERVIEW ================= */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          {/* Live Map Preview */}
-          <div className="card space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+          {/* Live Map Preview Card */}
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
               <div>
-                <h2 className="font-bold text-slate-900">Live Field Map</h2>
-                <p className="text-xs text-slate-500">Real-time GPS positions of active field officers</p>
+                <h2 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                  <span>Live Field Map</span>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                    {markers.length} on duty
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-500">Real-time GPS broadcast & status of active field officers</p>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="flex h-2 w-2 relative">
-                  {wsOk && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
-                  <span className={`relative inline-flex rounded-full h-2 w-2 ${wsOk ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
-                </span>
-                <span className="text-xs font-semibold text-slate-600">
-                  {wsOk ? 'Live WebSocket Connected' : 'Connecting to live feed...'}
-                </span>
+
+              {/* 3-State Connection Badge */}
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                {connState === 'connected' && (
+                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span>Live Feed Active (WebSocket)</span>
+                  </span>
+                )}
+                {connState === 'connecting' && (
+                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-xs font-semibold">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                    </span>
+                    <span>Reconnecting live feed...</span>
+                  </span>
+                )}
+                {connState === 'offline' && (
+                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 text-rose-800 border border-rose-200 text-xs font-semibold">
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                    <span>Live Feed Offline (Polling 15s)</span>
+                  </span>
+                )}
               </div>
             </div>
-            <MapView markers={markers} height={380} />
+
+            {/* Map Container */}
+            <MapView markers={markers} height="55vh" />
           </div>
 
-          {/* Active Field Personnel Table */}
-          <div className="card overflow-x-auto">
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-              <div>
-                <h3 className="font-bold text-slate-900">Active Field Officers Today</h3>
-                <p className="text-xs text-slate-500">Currently punched in and tracking</p>
+          {/* Below Map: 2-Column Grid (Requirement D: Active Now + Recent Interruptions) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Active Field Personnel Table */}
+            <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Active Field Officers Now</h3>
+                  <p className="text-xs text-slate-500">Currently punched in and transmitting live coordinates</p>
+                </div>
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+                  onClick={() => {
+                    setActiveTab('users');
+                    window.history.pushState(null, '', '/admin/users');
+                  }}
+                >
+                  View All Personnel &rarr;
+                </button>
               </div>
-              <button className="btn btn-ghost text-xs" onClick={() => setActiveTab('users')}>
-                View All Personnel →
-              </button>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-xs uppercase bg-slate-50 text-slate-500 border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3">Officer</th>
+                      <th className="px-3">Punch In</th>
+                      <th className="px-3">Last GPS</th>
+                      <th className="px-3">Status</th>
+                      <th className="px-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {Object.values(live).length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-400 text-xs">
+                          No active field officers transmitting right now.
+                        </td>
+                      </tr>
+                    ) : (
+                      Object.values(live).map((p) => (
+                        <tr key={p.session_id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3 px-3 font-semibold text-slate-800">
+                            {p.display_name}
+                          </td>
+                          <td className="px-3 text-xs text-slate-600">{fmtTime(p.punch_in_at)}</td>
+                          <td className="px-3 text-xs text-slate-600">{fmtTime(p.last_location_at)}</td>
+                          <td className="px-3">
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                                p.tracking_status === 'ACTIVE'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : p.tracking_status === 'OFFLINE'
+                                  ? 'bg-slate-100 text-slate-700'
+                                  : 'bg-rose-100 text-rose-800'
+                              }`}
+                            >
+                              {p.tracking_status}
+                            </span>
+                          </td>
+                          <td className="px-3 text-right">
+                            <Link
+                              to={`/admin/users/${p.user_id}`}
+                              className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              Inspect &rarr;
+                            </Link>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase bg-[#00a29a] text-white">
-                <tr>
-                  <th className="py-2.5 px-3">Employee</th>
-                  <th className="px-3">Punch In</th>
-                  <th className="px-3">Last GPS Ping</th>
-                  <th className="px-3">Status</th>
-                  <th className="px-3">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {Object.values(live).length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-6 text-center text-slate-400 text-sm">
-                      No active field sessions right now.
-                    </td>
-                  </tr>
+            {/* Recent Tracking Interruptions (Requirement D) */}
+            <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Recent Tracking Interruptions</h3>
+                  <p className="text-xs text-slate-500">Signals lost, browser sleep, or permissions revoked</p>
+                </div>
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+                  onClick={() => {
+                    setActiveTab('audit');
+                    window.history.pushState(null, '', '/admin/audit');
+                  }}
+                >
+                  Full Audit Log &rarr;
+                </button>
+              </div>
+
+              <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+                {recentInterruptions.length === 0 ? (
+                  <div className="py-8 text-center text-slate-400 text-xs">
+                    No recent tracking interruptions recorded today.
+                  </div>
                 ) : (
-                  Object.values(live).map((p) => (
-                    <tr key={p.session_id} className="hover:bg-slate-50/50">
-                      <td className="py-3 font-semibold text-slate-800">{p.display_name}</td>
-                      <td>{fmtTime(p.punch_in_at)}</td>
-                      <td>{fmtTime(p.last_location_at)}</td>
-                      <td>
-                        <span
-                          className={`badge ${
-                            p.tracking_status === 'ACTIVE' ? 'badge-success' : 'badge-warning'
-                          }`}
-                        >
-                          {p.tracking_status}
+                  recentInterruptions.map((ev: any) => (
+                    <div key={ev.id} className="py-3 flex items-start justify-between gap-3 text-xs">
+                      <div className="flex items-start gap-2.5">
+                        <span className="w-2 h-2 rounded-full bg-rose-500 mt-1.5 shrink-0" />
+                        <div>
+                          <p className="font-bold text-slate-800">
+                            {ev.display_name || ev.username || `User #${ev.user}`}
+                          </p>
+                          <p className="text-slate-500 text-[11px] mt-0.5">
+                            {ev.event_type === 'LOCATION_UNAVAILABLE'
+                              ? 'Device GPS Unavailable / Signal Lost'
+                              : ev.event_type === 'LOCATION_PERMISSION_DENIED'
+                              ? 'Location Permission Revoked'
+                              : ev.event_type}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="font-mono text-slate-500 text-[11px]">
+                          {fmtTime(ev.timestamp)}
                         </span>
-                      </td>
-                      <td>
-                        <Link
-                          to={`/admin/users/${p.user_id}`}
-                          className="text-xs font-semibold text-blue-900 hover:underline"
-                        >
-                          Inspect Route →
-                        </Link>
-                      </td>
-                    </tr>
+                        {ev.user && (
+                          <div>
+                            <Link
+                              to={`/admin/users/${ev.user}`}
+                              className="text-[11px] text-blue-600 hover:underline font-semibold"
+                            >
+                              Review &rarr;
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   ))
                 )}
-              </tbody>
-            </table>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1836,6 +2175,237 @@ export default function AdminDashboard() {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= TAB 6: AUDIT LOG ================= */}
+      {activeTab === 'audit' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
+              <div>
+                <h2 className="font-bold text-slate-900 text-base sm:text-lg flex items-center gap-2">
+                  <span>Tracking & Security Audit Log</span>
+                  <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                    {auditTotalCount} events
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Chronological event trail of shift lifecycle, GPS permissions, interruptions, and camera verifications
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAuditSearch('');
+                  setAuditEventType('');
+                  setAuditDateFrom('');
+                  setAuditDateTo('');
+                  setAuditPage(1);
+                  loadAuditEvents(1);
+                }}
+                className="btn btn-secondary self-start sm:self-auto text-xs py-1.5 px-3"
+              >
+                Reset Filters
+              </button>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="label text-xs font-semibold text-slate-600">Search Officer / ID</label>
+                  <input
+                    type="text"
+                    className="input !text-xs !py-1.5"
+                    placeholder="Search name or ID..."
+                    value={auditSearch}
+                    onChange={(e) => setAuditSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        setAuditPage(1);
+                        loadAuditEvents(1);
+                      }
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label className="label text-xs font-semibold text-slate-600">Event Type</label>
+                  <select
+                    className="input !text-xs !py-1.5"
+                    value={auditEventType}
+                    onChange={(e) => {
+                      setAuditEventType(e.target.value);
+                      setAuditPage(1);
+                    }}
+                  >
+                    {AUDIT_EVENT_CHOICES.map((ev) => (
+                      <option key={ev.id} value={ev.id}>
+                        {ev.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="label text-xs font-semibold text-slate-600">Date From</label>
+                  <input
+                    type="date"
+                    className="input !text-xs !py-1.5"
+                    value={auditDateFrom}
+                    onChange={(e) => {
+                      setAuditDateFrom(e.target.value);
+                      setAuditPage(1);
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label className="label text-xs font-semibold text-slate-600">Date To</label>
+                  <input
+                    type="date"
+                    className="input !text-xs !py-1.5"
+                    value={auditDateTo}
+                    onChange={(e) => {
+                      setAuditDateTo(e.target.value);
+                      setAuditPage(1);
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Audit Log Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm min-w-[700px]">
+                <thead className="text-xs uppercase bg-slate-50 text-slate-500 border-b border-slate-200">
+                  <tr>
+                    <th className="py-2.5 px-3">Timestamp</th>
+                    <th className="px-3">Field Officer</th>
+                    <th className="px-3">Event Type</th>
+                    <th className="px-3">Session #</th>
+                    <th className="px-3">Metadata / Details</th>
+                    <th className="px-3 text-right">Inspect</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {auditLoading ? (
+                    <tr>
+                      <td colSpan={6} className="py-12 text-center text-slate-400">
+                        <div className="inline-flex items-center gap-2 text-xs">
+                          <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                          <span>Loading audit events...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : auditEvents.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-10 text-center text-slate-400 text-xs">
+                        No audit events match your selected filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    auditEvents.map((ev: any) => {
+                      const isAlert =
+                        ev.event_type === 'LOCATION_UNAVAILABLE' ||
+                        ev.event_type === 'LOCATION_PERMISSION_DENIED';
+                      const isGood =
+                        ev.event_type === 'PUNCH_IN' ||
+                        ev.event_type === 'TRACKING_STARTED' ||
+                        ev.event_type === 'TRACKING_RESUMED';
+
+                      return (
+                        <tr key={ev.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3 px-3 font-mono text-xs text-slate-600 whitespace-nowrap">
+                            {fmtDate(ev.timestamp)} {fmtTime(ev.timestamp)}
+                          </td>
+                          <td className="px-3">
+                            <div className="font-semibold text-slate-900">
+                              {ev.display_name || ev.username || `User #${ev.user}`}
+                            </div>
+                            {ev.employee_id && (
+                              <div className="text-[11px] font-mono text-teal-700">
+                                {ev.employee_id}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3">
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                                isAlert
+                                  ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                  : isGood
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                  : 'bg-slate-100 text-slate-800 border border-slate-200'
+                              }`}
+                            >
+                              {ev.event_type}
+                            </span>
+                          </td>
+                          <td className="px-3 font-mono text-xs text-slate-600">
+                            {ev.session_id ? `#${ev.session_id}` : '—'}
+                          </td>
+                          <td className="px-3 font-mono text-xs text-slate-500 max-w-xs truncate">
+                            {ev.metadata && Object.keys(ev.metadata).length > 0
+                              ? JSON.stringify(ev.metadata)
+                              : '—'}
+                          </td>
+                          <td className="px-3 text-right">
+                            {ev.user && (
+                              <Link
+                                to={`/admin/users/${ev.user}`}
+                                className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                              >
+                                View User &rarr;
+                              </Link>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {auditTotalCount > 50 && (
+              <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs text-slate-600">
+                <span>
+                  Page {auditPage} of {Math.ceil(auditTotalCount / 50)} ({auditTotalCount} total records)
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={auditPage <= 1}
+                    onClick={() => {
+                      const p = Math.max(1, auditPage - 1);
+                      setAuditPage(p);
+                      loadAuditEvents(p);
+                    }}
+                    className="btn btn-secondary !py-1 !px-2.5 !text-xs disabled:opacity-50"
+                  >
+                    &larr; Prev
+                  </button>
+                  <button
+                    type="button"
+                    disabled={auditPage >= Math.ceil(auditTotalCount / 50)}
+                    onClick={() => {
+                      const p = auditPage + 1;
+                      setAuditPage(p);
+                      loadAuditEvents(p);
+                    }}
+                    className="btn btn-secondary !py-1 !px-2.5 !text-xs disabled:opacity-50"
+                  >
+                    Next &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

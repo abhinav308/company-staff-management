@@ -400,6 +400,32 @@ class DepartmentListView(APIView):
             .order_by("department")
         )
         dept_list = list(depts)
-        if not dept_list:
-            dept_list = ["IT Division (GNFC)"]
         return Response(dept_list)
+
+
+class AdminEventListView(generics.ListAPIView):
+    """Admin view for system tracking audit events log with search and filters."""
+    permission_classes = [IsAdminRole]
+    serializer_class = EventSerializer
+
+    def get_queryset(self):
+        from tracking.models import TrackingEvent
+        qs = TrackingEvent.objects.select_related("user", "user__profile", "session").order_by("-timestamp")
+        p = self.request.query_params
+        if p.get("user"):
+            qs = qs.filter(user_id=p["user"])
+        if p.get("event_type"):
+            qs = qs.filter(event_type=p["event_type"])
+        if p.get("date_from"):
+            qs = qs.filter(timestamp__date__gte=p["date_from"])
+        if p.get("date_to"):
+            qs = qs.filter(timestamp__date__lte=p["date_to"])
+        if p.get("search"):
+            q = p["search"].strip()
+            qs = qs.filter(
+                Q(user__username__icontains=q)
+                | Q(user__first_name__icontains=q)
+                | Q(user__last_name__icontains=q)
+                | Q(user__profile__employee_id__icontains=q)
+            )
+        return qs

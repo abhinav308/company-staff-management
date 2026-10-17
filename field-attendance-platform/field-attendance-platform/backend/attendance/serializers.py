@@ -165,9 +165,21 @@ class SessionSerializer(serializers.ModelSerializer):
 
 
 class EventSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source="user.username", read_only=True)
+    display_name = serializers.SerializerMethodField()
+    employee_id = serializers.SerializerMethodField()
+
     class Meta:
         model = TrackingEvent
-        fields = ["id", "event_type", "timestamp", "metadata"]
+        fields = ["id", "user", "username", "display_name", "employee_id", "session_id", "event_type", "timestamp", "metadata"]
+
+    def get_display_name(self, o):
+        return o.user.get_full_name() or o.user.username
+
+    def get_employee_id(self, o):
+        if hasattr(o.user, "profile") and o.user.profile:
+            return o.user.profile.employee_id
+        return o.user.username
 
 
 class PunchInSerializer(serializers.Serializer):
