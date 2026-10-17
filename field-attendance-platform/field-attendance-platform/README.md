@@ -1,6 +1,6 @@
 # Location-Based Attendance & Field Activity Tracking Platform
 
-[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-15%2F15%20Passing-brightgreen)](file:///c:/Users/Abhinav/Desktop/Ncode/field-attendance-platform/field-attendance-platform/backend)
+[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-16%2F16%20Passing-brightgreen)](file:///c:/Users/Abhinav/Desktop/Ncode/field-attendance-platform/field-attendance-platform/backend)
 [![Frontend Build](https://img.shields.io/badge/Frontend-Vite%20%2B%20TypeScript%20Passing-blue)](file:///c:/Users/Abhinav/Desktop/Ncode/field-attendance-platform/field-attendance-platform/frontend)
 [![Design System](https://img.shields.io/badge/Aesthetics-TailwindCSS%20Accessible-indigo)](file:///c:/Users/Abhinav/Desktop/Ncode/field-attendance-platform/field-attendance-platform/frontend)
 
@@ -174,7 +174,9 @@ python manage.py test
 | `POST` | `auth/refresh/` | Public | Refreshes expired access token |
 | `POST` | `auth/logout/` | Authenticated | Blacklists refresh token |
 | `GET` | `auth/health/` | Public | Service health & database connectivity check |
-| `POST` | `attendance/punch-in/` | User | Starts shift (multipart: selfie + GPS coordinates) |
+| `GET` | `attendance/consent/` | User | Check user tracking policy consent status |
+| `POST` | `attendance/consent/` | User | Record consent for current policy version |
+| `POST` | `attendance/punch-in/` | User | Starts shift (multipart: selfie + GPS coords + consent verification) |
 | `POST` | `attendance/punch-out/` | User | Concludes shift, sets tracking to PUNCHED_OUT |
 | `GET` | `attendance/current/` | User | Active shift session and current tracking state |
 | `GET` | `attendance/history/` | User | Historical attendance records & duration summaries |
@@ -190,6 +192,14 @@ python manage.py test
 | `GET` | `admin/sessions/<id>/` | Admin | Detailed route breadcrumbs and event audit timeline |
 | `GET/PATCH` | `admin/users/` | Admin | Employee roster search, filter, enable/disable toggle |
 | `WS` | `/ws/admin/live/?token=<jwt>`| Admin | Live location & status stream |
+
+---
+
+## Development Environment & Secure Context
+
+- **Local Development over HTTP:** The Vite dev server runs at `http://localhost:5173`. According to W3C and Chromium standards, `http://localhost` is treated as a **Secure Context**, enabling camera `getUserMedia`, `navigator.geolocation`, and the `Screen Wake Lock API` to function out of the box without certificate bypass warnings.
+- **SSL Certificates:** Any custom self-signed SSL plugin (`basicSsl`) has been removed from `vite.config.ts` to prevent untrusted certificate errors that break media permissions. If HTTPS is needed in staging, configure valid trusted certificates via `mkcert` or Let's Encrypt.
+- **Environment Schemas:** `VITE_API_URL` defaults to `/api` (proxied to backend) and `VITE_WS_URL` defaults to `ws://localhost:8000`.
 
 ---
 

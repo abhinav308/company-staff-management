@@ -22,7 +22,7 @@ from PIL import Image
 from rest_framework.test import APITestCase
 
 from accounts.models import User
-from attendance.models import AttendanceSession, Holiday
+from attendance.models import AttendanceSession, Holiday, UserConsent
 from locations.models import LocationRecord
 from tracking.models import TrackingEvent
 
@@ -93,7 +93,31 @@ class AuthTests(APITestCase):
 class FlowTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user("rahul", password="x-Str0ng-pass")
+        UserConsent.objects.create(user=self.user, policy_version="1.0")
         self.admin = User.objects.create_user("boss", password="x-Str0ng-pass", role="ADMIN")
+
+    def test_punch_in_validation_and_consent(self):
+        new_user = User.objects.create_user("no_consent_user", password="x-Str0ng-pass")
+        self.client.force_authenticate(new_user)
+
+        # 1. Reject without consent
+        r = self.client.post("/api/attendance/punch-in/", {"selfie": png(), "latitude": 12.9, "longitude": 77.5}, format="multipart")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("Consent required", r.data.get("detail", ""))
+
+        # 2. Reject with consent but without selfie
+        r = self.client.post("/api/attendance/punch-in/", {"consent": True, "latitude": 12.9, "longitude": 77.5}, format="multipart")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("selfie", r.data)
+
+        # 3. Reject with consent and selfie but without coordinates
+        r = self.client.post("/api/attendance/punch-in/", {"consent": True, "selfie": png()}, format="multipart")
+        self.assertEqual(r.status_code, 400)
+        self.assertTrue("latitude" in r.data or "longitude" in r.data)
+
+        # 4. Accept when consent, selfie, and coordinates are provided
+        r = self.client.post("/api/attendance/punch-in/", {"consent": True, "selfie": png(), "latitude": 12.9, "longitude": 77.5}, format="multipart")
+        self.assertEqual(r.status_code, 201)
 
     def test_full_session_flow(self):
         self.client.force_authenticate(self.user)
@@ -243,6 +267,7 @@ class BatchLocationTests(APITestCase):
 
     def setUp(self):
         self.user = User.objects.create_user("batchuser", password="x-Str0ng-pass")
+        UserConsent.objects.create(user=self.user, policy_version="1.0")
         self.client.force_authenticate(self.user)
 
     def _punch_in(self):

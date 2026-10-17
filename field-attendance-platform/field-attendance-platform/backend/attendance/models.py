@@ -133,3 +133,16 @@ class Holiday(models.Model):
 
     class Meta:
         ordering = ["date"]
+
+
+class UserConsent(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="consents")
+    policy_version = models.CharField(max_length=20, default="1.0")
+    accepted_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-accepted_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "policy_version"], name="unique_user_policy_consent")
+        ]
+

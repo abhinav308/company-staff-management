@@ -1,5 +1,6 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import AttendanceTab from '../../components/AttendanceTab';
 import EventTimeline from '../../components/EventTimeline';
 import EvidenceImage from '../../components/EvidenceImage';
 import Layout from '../../components/Layout';
@@ -220,102 +221,115 @@ export default function UserDashboard() {
   }, []);
 
   const tracking = useTracking(!!session);
-  useEffect(() => {
-    if (session) {
-      if (tracking.status === 'PERMISSION_DENIED') {
-        alert("Location services have been turned off. You will be automatically punched out.");
-        api.post('/attendance/punch-out/', {}).then(() => {
-          setSuccessMsg('Session ended due to location permission denial.');
-          load();
-        }).catch(err => {
-          setError(errorMessage(err));
-        });
-      } else {
-        load();
-      }
-    }
-  }, [tracking.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
-  const punchIn = async (capturedFile?: File) => {
-    const fileToUse = capturedFile || selfie;
-    if (!fileToUse) return setError('Please capture or upload a selfie to verify attendance.');
-    
-    // Auto consent if coming directly from LiveCamera auto-capture
-    if (!capturedFile && !consent) return setError('Please review and check the location consent checkbox.');
-    
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const statusBadge = useMemo(() => {
+    if (!isOnline) {
+      return {
+        label: 'Offline',
+        className: 'bg-amber-100 text-amber-800 border-amber-300',
+        dotClass: 'bg-amber-500 animate-pulse',
+      };
+    }
+    if (!session) {
+      return {
+        label: 'Off duty',
+        className: 'bg-slate-100 text-slate-700 border-slate-300',
+        dotClass: 'bg-slate-400',
+      };
+    }
+    if (tracking.status === 'PERMISSION_DENIED' || tracking.status === 'LOCATION_UNAVAILABLE') {
+      return {
+        label: 'Location lost',
+        className: 'bg-rose-100 text-rose-800 border-rose-300',
+        dotClass: 'bg-rose-500 animate-pulse',
+      };
+    }
+    return {
+      label: 'On duty',
+      className: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+      dotClass: 'bg-emerald-500',
+    };
+  }, [isOnline, session, tracking.status]);
+
+  const avatarInitials = useMemo(() => {
+    const name = user?.full_name || user?.username || 'Field Officer';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+  }, [user]);
+
+  const handlePunchIn = async (data: {
+    selfie: File;
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+    consent: boolean;
+    policy_version: string;
+  }) => {
     setBusy(true);
     setError('');
     setSuccessMsg('');
     try {
-      let lat = 0;
-      let lng = 0;
-      let acc = 10;
-      
-      try {
-        const pos = await getPosition(10000);
-        lat = pos.coords.latitude;
-        lng = pos.coords.longitude;
-        acc = pos.coords.accuracy;
-      } catch (gpsError) {
-        console.warn("GPS failed, falling back to IP Geolocation.", gpsError);
-        try {
-          const res = await fetch('https://ipapi.co/json/');
-          const data = await res.json();
-          if (data.latitude && data.longitude) {
-            lat = data.latitude;
-            lng = data.longitude;
-            acc = 500; // IP geolocation is less accurate
-          } else {
-            throw new Error("IP API failed");
-          }
-        } catch (ipError) {
-           // Absolute last resort fallback if both GPS and IP fail
-           lat = 21.1702; 
-           lng = 72.8311;
-        }
-      }
-
       const fd = new FormData();
-      fd.append('selfie', fileToUse);
-      fd.append('latitude', String(lat));
-      fd.append('longitude', String(lng));
-      fd.append('accuracy', String(acc));
+      fd.append('selfie', data.selfie);
+      fd.append('latitude', String(data.latitude));
+      fd.append('longitude', String(data.longitude));
+      if (data.accuracy != null) {
+        fd.append('accuracy', String(data.accuracy));
+      }
+      fd.append('consent', data.consent ? 'true' : 'false');
+      fd.append('policy_version', data.policy_version);
       await api.post('/attendance/punch-in/', fd);
-      setSelfie(null);
-      setConsent(false);
       setSuccessMsg('Punched in successfully! Location tracking is now active.');
       await load();
     } catch (e) {
-      setError(errorMessage(e));
+      const msg = errorMessage(e);
+      setError(msg);
+      throw e;
     } finally {
       setBusy(false);
     }
   };
 
-  const punchOut = async () => {
+  const handlePunchOut = async () => {
     if (activeVisit) {
-      return setError(
-        `You have an active field visit in progress (${activeVisit.site_name}). Please complete your visit before punching out.`
-      );
+      const msg = `You have an active field visit in progress (${activeVisit.site_name}). Please complete your visit before punching out.`;
+      setError(msg);
+      throw new Error(msg);
     }
-    if (!confirm('Are you sure you want to Punch Out and close your active field session?')) return;
     setBusy(true);
     setError('');
     setSuccessMsg('');
     try {
-      let body = {};
+      let body: any = {};
       try {
         const p = await getPosition(5000);
         body = { latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy: p.coords.accuracy };
       } catch {
-        /* final location is best-effort */
+        /* best-effort */
       }
       await api.post('/attendance/punch-out/', body);
       setSuccessMsg('Punched out successfully. Your field work session has completed.');
       await load();
       setActiveTab('dashboard');
     } catch (e) {
-      setError(errorMessage(e));
+      const msg = errorMessage(e);
+      setError(msg);
+      throw e;
     } finally {
       setBusy(false);
     }
@@ -711,95 +725,79 @@ export default function UserDashboard() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 overflow-hidden">
-      {/* If activeTab !== 'dashboard', we need a standard mobile header. If dashboard, the dashboard tab handles its own header. */}
-      {activeTab !== 'dashboard' && (
-        <div className="px-4 py-3 bg-white flex justify-between items-center shadow z-20 shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-blue-600 font-bold border-2 border-blue-600 rounded px-1 text-xs">SB</span>
-            <span className="font-bold text-slate-800 text-sm">Ncode Demo Account</span>
-          </div>
-        </div>
-      )}
-
-      <div className={`flex-1 overflow-y-auto ${activeTab === 'dashboard' ? '' : 'p-4'} flex flex-col relative`}>
-        {/* Alert Messages */}
-        {error && (
-          <div className="rounded-xl bg-rose-50 border border-rose-200 p-4 mx-4 mt-4 text-sm text-rose-700 flex items-start gap-3 shrink-0">
-            <svg className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-            </svg>
-            <div className="flex-1 whitespace-pre-line">{error}</div>
-            <button className="text-rose-400 hover:text-rose-600" onClick={() => setError('')}>✕</button>
-          </div>
-        )}
-
-        {successMsg && (
-          <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 mx-4 mt-4 text-sm text-emerald-800 flex items-start gap-3 shrink-0">
-            <svg className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-            </svg>
-            <div className="flex-1">{successMsg}</div>
-            <button className="text-emerald-400 hover:text-emerald-600" onClick={() => setSuccessMsg('')}>✕</button>
-          </div>
-        )}
-
-      {/* ================= TAB 1: DASHBOARD ================= */}
-      {activeTab === 'dashboard' && (
-        <div className="absolute inset-0 z-50 bg-black flex flex-col overflow-hidden">
-          {/* Top Bar matching SalaryBox */}
-          <div className="px-4 py-3 bg-white flex justify-between items-center shadow z-50">
-            <div className="flex items-center gap-2">
-               <span className="text-blue-600 font-bold border-2 border-blue-600 rounded px-1 text-xs">SB</span>
-               <span className="font-bold text-slate-800 text-sm">Ncode Demo Account</span>
+    <div className="min-h-screen bg-slate-200/70 flex items-center justify-center sm:py-6 sm:px-4">
+      <div className="w-full max-w-md h-screen sm:h-[880px] sm:max-h-[94vh] bg-slate-50 sm:rounded-3xl sm:shadow-2xl flex flex-col overflow-hidden relative sm:border sm:border-slate-300/80">
+        {/* Top Header */}
+        <header className="px-4 py-3 bg-white border-b border-slate-200/80 flex items-center justify-between shrink-0 shadow-sm z-30">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-white font-bold flex items-center justify-center text-xs shadow-sm shrink-0">
+              {avatarInitials}
             </div>
-            <div className="flex items-center gap-3">
-               <span className="font-semibold text-slate-800 text-xs">{fmtDate(new Date().toISOString())}</span>
-               {session ? (
-                 <span className="text-rose-500 font-bold text-xs border border-rose-500 px-2 py-0.5 rounded cursor-pointer" onClick={punchOut}>Stop Live Tracking</span>
-               ) : (
-                 <span className="text-slate-400 font-semibold text-xs border border-slate-300 px-2 py-0.5 rounded">Paused</span>
-               )}
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-slate-900 text-sm truncate leading-tight">
+                  {user?.full_name || user?.username || 'Field Officer'}
+                </span>
+                <span
+                  className={`w-2 h-2 rounded-full shrink-0 ${isOnline ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                  title={isOnline ? 'Online' : 'Offline'}
+                />
+              </div>
+              <p className="text-[11px] text-slate-500 truncate leading-tight mt-0.5">
+                {fmtDate(new Date().toISOString())}
+              </p>
             </div>
           </div>
-          
-          <div className="flex-1 relative bg-black flex flex-col">
-             {/* Use LiveCamera */}
-             {!session ? (
-                <LiveCamera 
-                  onCapture={(file) => {
-                     setSelfie(file);
-                     setConsent(true);
-                     punchIn(file);
-                  }}
-                  buttonLabel="Punch In"
-                  color="bg-[#00c696]"
-                >
-                  <p className="text-white text-lg font-medium drop-shadow-md mb-2">
-                     Recognized {user?.full_name || user?.username}
-                  </p>
-                </LiveCamera>
-             ) : (
-                <LiveCamera 
-                  onCapture={() => {
-                     punchOut();
-                  }}
-                  buttonLabel="Punch Out"
-                  color="bg-[#ef4444]"
-                >
-                  <p className="text-white text-lg font-medium drop-shadow-md mb-2">
-                     Recognized {user?.full_name || user?.username}
-                  </p>
-                </LiveCamera>
-             )}
+
+          <div className="flex items-center gap-2 shrink-0">
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${statusBadge.className}`}
+              aria-live="polite"
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dotClass}`} />
+              {statusBadge.label}
+            </span>
           </div>
-          
-          {/* Notes banner */}
-          <div className="bg-[#a2d9f5] text-center py-3 font-bold text-slate-800 text-sm z-20 relative shadow-[0_-2px_10px_rgba(0,0,0,0.1)] cursor-pointer hover:bg-[#86cded]">
-             Check Today's Notes
-          </div>
-        </div>
-      )}
+        </header>
+
+        <div className={`flex-1 overflow-y-auto ${activeTab === 'dashboard' ? '' : 'p-4'} flex flex-col relative`}>
+          {/* Alert Messages */}
+          {error && (
+            <div className="rounded-xl bg-rose-50 border border-rose-200 p-4 mx-4 mt-4 text-sm text-rose-700 flex items-start gap-3 shrink-0">
+              <svg className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <div className="flex-1 whitespace-pre-line">{error}</div>
+              <button className="text-rose-400 hover:text-rose-600" onClick={() => setError('')}>✕</button>
+            </div>
+          )}
+
+          {successMsg && (
+            <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 mx-4 mt-4 text-sm text-emerald-800 flex items-start gap-3 shrink-0">
+              <svg className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              <div className="flex-1">{successMsg}</div>
+              <button className="text-emerald-400 hover:text-emerald-600" onClick={() => setSuccessMsg('')}>✕</button>
+            </div>
+          )}
+
+          {/* ================= TAB 1: ATTENDANCE & PUNCH-IN FLOW ================= */}
+          {activeTab === 'dashboard' && (
+            <div className="p-4 flex-1">
+              <AttendanceTab
+                session={session}
+                trackingStatus={tracking.status}
+                lastTrackingUpdate={tracking.lastUpdate}
+                history={history}
+                busy={busy}
+                onPunchIn={handlePunchIn}
+                onPunchOut={handlePunchOut}
+                onNavigateToHistory={() => setActiveTab('history')}
+                onNavigateToVisits={() => setActiveTab('visits')}
+              />
+            </div>
+          )}
 
       {/* ================= TAB 2: MY TRACKING ================= */}
       {activeTab === 'tracking' && (
@@ -1937,23 +1935,90 @@ export default function UserDashboard() {
       </div>
 
       {/* BOTTOM NAV */}
-      <div className="bg-white flex items-center justify-around py-2 border-t border-slate-200 pb-safe z-30 relative shrink-0">
-         <button className={`flex flex-col items-center p-2 ${activeTab === 'dashboard' ? 'text-[#00c696]' : 'text-slate-400 hover:text-slate-600'}`} onClick={() => { setActiveTab('dashboard'); setError(''); setSuccessMsg(''); }}>
-            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4"/></svg>
-            <span className="text-[10px] font-bold">Attendance</span>
-         </button>
-         <button className={`flex flex-col items-center p-2 ${activeTab === 'visits' ? 'text-[#00c696]' : 'text-slate-400 hover:text-slate-600'}`} onClick={() => { setActiveTab('visits'); setError(''); setSuccessMsg(''); }}>
-            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
-            <span className="text-[10px] font-bold">Field Visits</span>
-         </button>
-         <button className={`flex flex-col items-center p-2 ${activeTab === 'history' ? 'text-[#00c696]' : 'text-slate-400 hover:text-slate-600'}`} onClick={() => { setActiveTab('history'); setError(''); setSuccessMsg(''); }}>
-            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            <span className="text-[10px] font-bold">History</span>
-         </button>
-         <button className={`flex flex-col items-center p-2 ${activeTab === 'profile' ? 'text-[#00c696]' : 'text-slate-400 hover:text-slate-600'}`} onClick={() => { setActiveTab('profile'); setError(''); setSuccessMsg(''); }}>
-            <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-            <span className="text-[10px] font-bold">Profile</span>
-         </button>
+      <nav
+        aria-label="Officer Bottom Navigation"
+        className="bg-white flex items-center justify-around py-1.5 border-t border-slate-200/90 pb-safe z-30 relative shrink-0 shadow-[0_-2px_6px_rgba(0,0,0,0.03)]"
+      >
+        <button
+          type="button"
+          aria-label="Attendance Tab"
+          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[48px] px-2 py-1 rounded-xl transition-all ${
+            activeTab === 'dashboard'
+              ? 'text-emerald-600 font-bold bg-emerald-50/60'
+              : 'text-slate-400 hover:text-slate-600'
+          }`}
+          onClick={() => {
+            setActiveTab('dashboard');
+            setError('');
+            setSuccessMsg('');
+          }}
+        >
+          <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
+          </svg>
+          <span className="text-[10px]">Attendance</span>
+        </button>
+
+        <button
+          type="button"
+          aria-label="Field Visits Tab"
+          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[48px] px-2 py-1 rounded-xl transition-all ${
+            activeTab === 'visits'
+              ? 'text-emerald-600 font-bold bg-emerald-50/60'
+              : 'text-slate-400 hover:text-slate-600'
+          }`}
+          onClick={() => {
+            setActiveTab('visits');
+            setError('');
+            setSuccessMsg('');
+          }}
+        >
+          <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+          </svg>
+          <span className="text-[10px]">Field Visits</span>
+        </button>
+
+        <button
+          type="button"
+          aria-label="History Tab"
+          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[48px] px-2 py-1 rounded-xl transition-all ${
+            activeTab === 'history'
+              ? 'text-emerald-600 font-bold bg-emerald-50/60'
+              : 'text-slate-400 hover:text-slate-600'
+          }`}
+          onClick={() => {
+            setActiveTab('history');
+            setError('');
+            setSuccessMsg('');
+          }}
+        >
+          <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="text-[10px]">History</span>
+        </button>
+
+        <button
+          type="button"
+          aria-label="Profile Tab"
+          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[48px] px-2 py-1 rounded-xl transition-all ${
+            activeTab === 'profile'
+              ? 'text-emerald-600 font-bold bg-emerald-50/60'
+              : 'text-slate-400 hover:text-slate-600'
+          }`}
+          onClick={() => {
+            setActiveTab('profile');
+            setError('');
+            setSuccessMsg('');
+          }}
+        >
+          <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          <span className="text-[10px]">Profile</span>
+        </button>
+      </nav>
       </div>
     </div>
   );

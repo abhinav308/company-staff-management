@@ -2,7 +2,7 @@ from django.conf import settings
 from rest_framework import serializers
 
 from tracking.models import TrackingEvent
-from .models import AttendanceSession, Visit, VisitPhoto, LeaveRequest, Holiday
+from .models import AttendanceSession, Visit, VisitPhoto, LeaveRequest, Holiday, UserConsent
 
 INTERRUPTION_TYPES = ["LOCATION_UNAVAILABLE", "LOCATION_PERMISSION_DENIED"]
 
@@ -182,13 +182,24 @@ class EventSerializer(serializers.ModelSerializer):
         return o.user.username
 
 
+class UserConsentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserConsent
+        fields = ["id", "policy_version", "accepted_at"]
+        read_only_fields = ["id", "accepted_at"]
+
+
 class PunchInSerializer(serializers.Serializer):
-    selfie = serializers.ImageField()  # Pillow verifies it is a real image
-    latitude = serializers.FloatField(min_value=-90, max_value=90)
-    longitude = serializers.FloatField(min_value=-180, max_value=180)
+    selfie = serializers.ImageField(required=True)  # Pillow verifies it is a real image
+    latitude = serializers.FloatField(required=True, min_value=-90, max_value=90)
+    longitude = serializers.FloatField(required=True, min_value=-180, max_value=180)
     accuracy = serializers.FloatField(required=False, allow_null=True, min_value=0)
+    consent = serializers.BooleanField(required=False, default=False)
+    policy_version = serializers.CharField(required=False, default="1.0")
 
     def validate_selfie(self, f):
+        if not f:
+            raise serializers.ValidationError("A verified front-camera selfie or photo is strictly required.")
         if f.size > settings.SELFIE_MAX_BYTES:
             raise serializers.ValidationError("Selfie must be 5 MB or smaller.")
         if getattr(f, "content_type", None) not in settings.SELFIE_ALLOWED_TYPES:

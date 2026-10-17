@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 from locations.models import LocationRecord
 from tracking.models import TrackingEvent as E
 from tracking.services import broadcast_live, log_event
-from .models import AttendanceSession as S, Visit, VisitPhoto, LeaveRequest, Holiday
+from .models import AttendanceSession as S, Visit, VisitPhoto, LeaveRequest, Holiday, UserConsent
 from .serializers import (
     EventSerializer,
     PunchInSerializer,
@@ -20,11 +20,34 @@ from .serializers import (
     VisitSerializer,
     LeaveRequestSerializer,
     HolidaySerializer,
+    UserConsentSerializer,
 )
 
 
 def active_session(user):
     return S.objects.select_related("user").filter(user=user, status=S.Status.ACTIVE).first()
+
+
+class ConsentView(APIView):
+    """Checks and records user consent for location tracking policy."""
+
+    def get(self, request):
+        policy_ver = request.query_params.get("policy_version", "1.0")
+        consent = UserConsent.objects.filter(user=request.user, policy_version=policy_ver).first()
+        return Response({
+            "has_consented": consent is not None,
+            "policy_version": policy_ver,
+            "accepted_at": consent.accepted_at.isoformat() if consent else None,
+        })
+
+    def post(self, request):
+        policy_ver = request.data.get("policy_version", "1.0")
+        consent, _ = UserConsent.objects.get_or_create(user=request.user, policy_version=policy_ver)
+        return Response({
+            "has_consented": True,
+            "policy_version": policy_ver,
+            "accepted_at": consent.accepted_at.isoformat(),
+        }, status=status.HTTP_200_OK)
 
 
 class PunchInView(APIView):
@@ -36,6 +59,19 @@ class PunchInView(APIView):
         ser = PunchInSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         d = ser.validated_data
+
+        # Server-enforced consent verification
+        policy_ver = d.get("policy_version", "1.0")
+        has_consent = UserConsent.objects.filter(user=request.user, policy_version=policy_ver).exists()
+        if not has_consent:
+            if d.get("consent"):
+                UserConsent.objects.get_or_create(user=request.user, policy_version=policy_ver)
+            else:
+                return Response(
+                    {"detail": f"Consent required: You must review and accept the tracking and privacy policy (v{policy_ver}) before punching in."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         now = timezone.now()
         try:
             with transaction.atomic():

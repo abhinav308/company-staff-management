@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     CurrentSessionView,
+    ConsentView,
     HistoryView,
     PunchInView,
     PunchOutView,
@@ -16,6 +17,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path("consent/", ConsentView.as_view()),
     path("punch-in/", PunchInView.as_view()),
     path("punch-out/", PunchOutView.as_view()),
     path("current/", CurrentSessionView.as_view()),
