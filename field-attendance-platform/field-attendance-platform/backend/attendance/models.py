@@ -102,37 +102,97 @@ class VisitPhoto(models.Model):
         ordering = ["created_at", "id"]
 
 
+class LeaveType(models.Model):
+    code = models.CharField(max_length=30, unique=True, db_index=True)
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, default="")
+    default_days_per_year = models.DecimalField(max_digits=5, decimal_places=1, default=12.0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["code"]
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
+
+
+class LeaveBalance(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="leave_balances")
+    leave_type = models.ForeignKey(LeaveType, on_delete=models.CASCADE, related_name="balances")
+    year = models.IntegerField(default=2026, db_index=True)
+    total_days = models.DecimalField(max_digits=5, decimal_places=1, default=12.0)
+    used_days = models.DecimalField(max_digits=5, decimal_places=1, default=0.0)
+
+    class Meta:
+        ordering = ["year", "leave_type__code"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "leave_type", "year"], name="unique_user_leave_balance_per_year")
+        ]
+
+    @property
+    def available_days(self):
+        return max(0.0, float(self.total_days - self.used_days))
+
+    def __str__(self):
+        return f"{self.user.username} - {self.leave_type.code} ({self.available_days} left)"
+
+
 class LeaveRequest(models.Model):
-    class LeaveType(models.TextChoices):
-        SICK = "SICK", "Sick Leave"
+    class LeaveTypeEnum(models.TextChoices):
         CASUAL = "CASUAL", "Casual Leave"
+        SICK = "SICK", "Sick Leave"
+        EARNED = "EARNED", "Earned Leave"
         PTO = "PTO", "Paid Time Off"
+        OTHER = "OTHER", "Other Leave"
 
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pending Approval"
         APPROVED = "APPROVED", "Approved"
         REJECTED = "REJECTED", "Rejected"
+        CANCELLED = "CANCELLED", "Cancelled"
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="leave_requests")
-    leave_type = models.CharField(max_length=10, choices=LeaveType.choices)
-    start_date = models.DateField()
-    end_date = models.DateField()
+    leave_type_ref = models.ForeignKey(LeaveType, null=True, blank=True, on_delete=models.SET_NULL, related_name="requests")
+    leave_type = models.CharField(max_length=30, default="CASUAL")
+    start_date = models.DateField(db_index=True)
+    end_date = models.DateField(db_index=True)
+    is_half_day = models.BooleanField(default=False)
+    half_day_period = models.CharField(max_length=20, blank=True, default="")
+    days_count = models.DecimalField(max_digits=4, decimal_places=1, default=1.0)
     reason = models.TextField()
-    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
-    created_at = models.DateTimeField(auto_now_add=True)
+    attachment = models.FileField(upload_to="leave_attachments/", null=True, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True)
+    approver = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="approved_leaves")
+    approver_comment = models.TextField(blank=True, default="")
+    decided_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]
 
+    def __str__(self):
+        return f"{self.user.username} - {self.leave_type} ({self.start_date} to {self.end_date}): {self.status}"
+
 
 class Holiday(models.Model):
-    name = models.CharField(max_length=100)
-    date = models.DateField(unique=True)
+    class HolidayType(models.TextChoices):
+        NATIONAL = "NATIONAL", "National Holiday"
+        STATE = "STATE", "State Holiday"
+        OPTIONAL = "OPTIONAL", "Restricted / Optional"
+
+    name = models.CharField(max_length=150)
+    date = models.DateField(unique=True, db_index=True)
+    year = models.IntegerField(default=2026, db_index=True)
+    holiday_type = models.CharField(max_length=20, choices=HolidayType.choices, default=HolidayType.NATIONAL)
+    description = models.TextField(blank=True, default="")
     is_mandatory = models.BooleanField(default=True)
 
     class Meta:
         ordering = ["date"]
+
+    def __str__(self):
+        return f"{self.date} - {self.name} ({self.holiday_type})"
 
 
 class UserConsent(models.Model):
@@ -145,4 +205,5 @@ class UserConsent(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["user", "policy_version"], name="unique_user_policy_consent")
         ]
+
 

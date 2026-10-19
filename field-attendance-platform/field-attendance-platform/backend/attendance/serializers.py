@@ -2,7 +2,7 @@ from django.conf import settings
 from rest_framework import serializers
 
 from tracking.models import TrackingEvent
-from .models import AttendanceSession, Visit, VisitPhoto, LeaveRequest, Holiday, UserConsent
+from .models import AttendanceSession, Visit, VisitPhoto, LeaveType, LeaveBalance, LeaveRequest, Holiday, UserConsent
 
 INTERRUPTION_TYPES = ["LOCATION_UNAVAILABLE", "LOCATION_PERMISSION_DENIED"]
 
@@ -213,17 +213,123 @@ class PunchOutSerializer(serializers.Serializer):
     accuracy = serializers.FloatField(required=False, allow_null=True, min_value=0)
 
 
+class LeaveTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LeaveType
+        fields = ["id", "code", "name", "description", "default_days_per_year", "is_active"]
+
+
+class LeaveBalanceSerializer(serializers.ModelSerializer):
+    leave_type_code = serializers.CharField(source="leave_type.code", read_only=True)
+    leave_type_name = serializers.CharField(source="leave_type.name", read_only=True)
+    available_days = serializers.FloatField(read_only=True)
+
+    class Meta:
+        model = LeaveBalance
+        fields = [
+            "id",
+            "leave_type",
+            "leave_type_code",
+            "leave_type_name",
+            "year",
+            "total_days",
+            "used_days",
+            "available_days",
+        ]
+
+
 class LeaveRequestSerializer(serializers.ModelSerializer):
+    leave_type_name = serializers.SerializerMethodField()
+    approver_name = serializers.SerializerMethodField()
+    attachment_url = serializers.SerializerMethodField()
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    user_name = serializers.SerializerMethodField()
+
     class Meta:
         model = LeaveRequest
         fields = [
-            "id", "user", "leave_type", "start_date", "end_date",
-            "reason", "status", "created_at", "updated_at"
+            "id",
+            "user",
+            "user_name",
+            "leave_type",
+            "leave_type_ref",
+            "leave_type_name",
+            "start_date",
+            "end_date",
+            "is_half_day",
+            "half_day_period",
+            "days_count",
+            "reason",
+            "attachment",
+            "attachment_url",
+            "status",
+            "status_display",
+            "approver",
+            "approver_name",
+            "approver_comment",
+            "decided_at",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["id", "user", "status", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "user",
+            "user_name",
+            "status",
+            "status_display",
+            "approver",
+            "approver_name",
+            "decided_at",
+            "created_at",
+            "updated_at",
+            "attachment_url",
+        ]
+
+    def get_user_name(self, obj):
+        return obj.user.get_full_name() or obj.user.username
+
+    def get_leave_type_name(self, obj):
+        if obj.leave_type_ref:
+            return obj.leave_type_ref.name
+        return dict(LeaveRequest.LeaveTypeEnum.choices).get(obj.leave_type, obj.leave_type)
+
+    def get_approver_name(self, obj):
+        if obj.approver:
+            return obj.approver.get_full_name() or obj.approver.username
+        return None
+
+    def get_attachment_url(self, obj):
+        if obj.attachment:
+            request = self.context.get("request")
+            if request:
+                return request.build_absolute_uri(obj.attachment.url)
+            return obj.attachment.url
+        return None
 
 
 class HolidaySerializer(serializers.ModelSerializer):
+    day_name = serializers.SerializerMethodField()
+    holiday_type_display = serializers.CharField(source="get_holiday_type_display", read_only=True)
+    is_next_upcoming = serializers.SerializerMethodField()
+
     class Meta:
         model = Holiday
-        fields = ["id", "name", "date", "is_mandatory"]
+        fields = [
+            "id",
+            "name",
+            "date",
+            "year",
+            "holiday_type",
+            "holiday_type_display",
+            "description",
+            "is_mandatory",
+            "day_name",
+            "is_next_upcoming",
+        ]
+
+    def get_day_name(self, obj):
+        return obj.date.strftime("%A")
+
+    def get_is_next_upcoming(self, obj):
+        return getattr(obj, "is_next_upcoming", False)
+
