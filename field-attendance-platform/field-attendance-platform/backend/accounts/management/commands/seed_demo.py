@@ -18,8 +18,9 @@ from datetime import timedelta
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from accounts.models import EmployeeProfile, User
-from attendance.models import AttendanceSession, Holiday
+from decimal import Decimal
+from accounts.models import Announcement, EmployeeDocument, EmployeeProfile, Note, User
+from attendance.models import AttendanceSession, Holiday, LeaveBalance, LeaveRequest, LeaveType
 from locations.models import LocationRecord
 from tracking.models import TrackingEvent
 from tracking.services import log_event
@@ -251,16 +252,171 @@ class Command(BaseCommand):
                 _create_active_session(user, punch_in, route)
                 self.stdout.write(self.style.SUCCESS(f"    Created ACTIVE session for {ud['username']}"))
 
-        # ---- Holidays -------------------------------------------------------
-        holidays = [
-            ("Republic Day", "2025-01-26"),
-            ("Holi",         "2025-03-14"),
-            ("Diwali",       "2025-10-20"),
-            ("Christmas",    "2025-12-25"),
+        # ---- Leave Types ----------------------------------------------------
+        leave_types = [
+            ("CASUAL", "Casual Leave", Decimal("12.0"), "For short-notice personal or family obligations"),
+            ("SICK", "Sick Leave", Decimal("10.0"), "For illness, injury, or medical recovery"),
+            ("EARNED", "Earned Leave", Decimal("18.0"), "Annual privilege leave accrued over active tenure"),
         ]
-        for name, date_str in holidays:
-            Holiday.objects.get_or_create(date=date_str, defaults={"name": name})
-        self.stdout.write(self.style.SUCCESS(f"  Ensured {len(holidays)} holidays."))
+        created_lts = {}
+        for code, name, days, desc in leave_types:
+            lt, _ = LeaveType.objects.get_or_create(
+                code=code,
+                defaults={"name": name, "default_days_per_year": days, "description": desc, "is_active": True}
+            )
+            created_lts[code] = lt
+        self.stdout.write(self.style.SUCCESS(f"  Ensured {len(created_lts)} leave types."))
+
+        # ---- Assign Reporting Manager & Leave Balances ---------------------
+        admin_user = User.objects.filter(role=User.Role.ADMIN).first()
+        all_field_users = User.objects.filter(role=User.Role.USER)
+        for u in all_field_users:
+            p, _ = EmployeeProfile.objects.get_or_create(user=u)
+            if admin_user and not p.reporting_manager:
+                p.reporting_manager = admin_user
+                p.company = "Gujarat Narmada Valley Fertilizers & Chemicals Ltd. (GNFC)"
+                p.agency = "(n)Code Solutions - IT Division"
+                p.office = "Headquarters - Gandhinagar / Ahmedabad"
+                p.zone = "West Zone"
+                p.district = "Ahmedabad"
+                p.work_location = "Field Operations - Gujarat Circle"
+                p.emergency_contact_name = "Rajesh Mehta" if u.username == "arjun" else "Family Contact"
+                p.emergency_contact_phone = "+91 98250 11223"
+                p.emergency_contact_relation = "Father" if u.username == "arjun" else "Next of Kin"
+                p.save()
+
+            for code, lt in created_lts.items():
+                LeaveBalance.objects.get_or_create(
+                    user=u,
+                    leave_type=lt,
+                    year=2026,
+                    defaults={
+                        "total_days": lt.default_days_per_year,
+                        "used_days": Decimal("2.0") if code == "CASUAL" and u.username == "arjun" else Decimal("0.0")
+                    }
+                )
+
+        # Seed sample leave request for arjun
+        arjun = User.objects.filter(username="arjun").first()
+        if arjun and not LeaveRequest.objects.filter(user=arjun).exists():
+            LeaveRequest.objects.create(
+                user=arjun,
+                leave_type_ref=created_lts["CASUAL"],
+                leave_type="CASUAL",
+                start_date=timezone.now().date() + timedelta(days=10),
+                end_date=timezone.now().date() + timedelta(days=11),
+                days_count=Decimal("2.0"),
+                reason="Attending family function in Vadodara",
+                status=LeaveRequest.Status.PENDING,
+            )
+
+        # ---- Holidays 2026 --------------------------------------------------
+        holidays_2026 = [
+            ("Republic Day", "2026-01-26", "NATIONAL", "Celebration of the Constitution of India"),
+            ("Maha Shivratri", "2026-02-15", "STATE", "Traditional state festival"),
+            ("Holi (Dhuleti)", "2026-03-04", "STATE", "Festival of colours"),
+            ("Mahavir Jayanti", "2026-03-31", "OPTIONAL", "Birth anniversary of Lord Mahavira"),
+            ("Dr. Ambedkar Jayanti", "2026-04-14", "NATIONAL", "Commemorating Dr. B. R. Ambedkar"),
+            ("Gujarat Day", "2026-05-01", "STATE", "State foundation day"),
+            ("Independence Day", "2026-08-15", "NATIONAL", "National Independence Day"),
+            ("Raksha Bandhan", "2026-08-28", "OPTIONAL", "Traditional festival"),
+            ("Gandhi Jayanti", "2026-10-02", "NATIONAL", "Mahatma Gandhi's birthday"),
+            ("Dussehra (Vijayadashami)", "2026-10-20", "NATIONAL", "Victory of good over evil"),
+            ("Diwali (Laxmi Pujan)", "2026-11-08", "NATIONAL", "Festival of lights"),
+            ("Vikram Samvat New Year", "2026-11-09", "STATE", "Gujarati New Year"),
+            ("Bhai Dooj", "2026-11-11", "STATE", "Traditional regional holiday"),
+            ("Christmas Day", "2026-12-25", "NATIONAL", "Christmas celebration"),
+            ("New Year's Day", "2027-01-01", "OPTIONAL", "Civil calendar New Year"),
+        ]
+        for name, date_str, h_type, desc in holidays_2026:
+            Holiday.objects.update_or_create(
+                date=date_str,
+                defaults={
+                    "name": name,
+                    "year": int(date_str.split("-")[0]),
+                    "holiday_type": h_type,
+                    "description": desc,
+                    "is_mandatory": (h_type != "OPTIONAL"),
+                }
+            )
+        self.stdout.write(self.style.SUCCESS(f"  Ensured {len(holidays_2026)} holidays for 2026."))
+
+        # ---- Announcements --------------------------------------------------
+        announcements_data = [
+            ("Annual Field Safety & Geolocation Policy (v1.0)", "All Field Officers must ensure GPS accuracy is maintained and verified front-camera selfies are uploaded at start of duty. Tracking is active exclusively while punched in.", "URGENT", "COMPLIANCE"),
+            ("Quarterly IT Systems Maintenance Notice", "Scheduled server optimizations on 25th of this month from 01:00 AM to 03:00 AM IST. Field operations offline queueing will handle breadcrumbs smoothly.", "NORMAL", "OPERATIONS"),
+            ("Employee Welfare: Medical Checkup Camp at GNFC Bharuch", "Complimentary annual health and ESIC biometric checkups scheduled for field personnel across Gujarat Circle.", "IMPORTANT", "HR & WELFARE"),
+        ]
+        for title, content, priority, cat in announcements_data:
+            Announcement.objects.get_or_create(
+                title=title,
+                defaults={
+                    "content": content,
+                    "priority": priority,
+                    "category": cat,
+                    "published_by": admin_user,
+                    "is_active": True,
+                }
+            )
+        self.stdout.write(self.style.SUCCESS(f"  Ensured {len(announcements_data)} announcements."))
+
+        # ---- Notes for Arjun -----------------------------------------------
+        if arjun and not Note.objects.filter(user=arjun).exists():
+            Note.objects.create(
+                user=arjun,
+                title="S.G. Highway Client Inspection Checklist",
+                content="1. Check biometrics hardware serial numbers\n2. Verify SIM card connectivity\n3. Take site supervisor sign-off",
+            )
+            Note.objects.create(
+                user=arjun,
+                title="Expense reimbursements for Bharuch visit",
+                content="Fuel slip of Rs. 850 from Indian Oil bunk. Keep physical copy for claims.",
+            )
+            self.stdout.write(self.style.SUCCESS("  Created demo notes for Arjun."))
+
+        # ---- Documents for Arjun -------------------------------------------
+        if arjun and not EmployeeDocument.objects.filter(user=arjun).exists():
+            from django.core.files.base import ContentFile
+            dummy_pdf = ContentFile(b"%PDF-1.4 ... Dummy Company ID Document ...", name="arjun_id_card.pdf")
+            EmployeeDocument.objects.create(
+                user=arjun,
+                doc_type=EmployeeDocument.DocType.ID_CARD,
+                title="GNFC / (n)Code Company ID Card",
+                file=dummy_pdf,
+                file_size=1024 * 45,
+                file_type="application/pdf",
+                status=EmployeeDocument.Status.VERIFIED,
+                uploaded_by=arjun,
+                verified_by=admin_user,
+                verified_at=timezone.now(),
+                verification_notes="Verified against HR master record.",
+            )
+            dummy_app = ContentFile(b"%PDF-1.4 ... Appointment Letter ...", name="appointment_letter.pdf")
+            EmployeeDocument.objects.create(
+                user=arjun,
+                doc_type=EmployeeDocument.DocType.APPOINTMENT_LETTER,
+                title="Official Appointment Letter",
+                file=dummy_app,
+                file_size=1024 * 128,
+                file_type="application/pdf",
+                status=EmployeeDocument.Status.VERIFIED,
+                uploaded_by=arjun,
+                verified_by=admin_user,
+                verified_at=timezone.now(),
+                verification_notes="Signed and sealed copy verified.",
+            )
+            dummy_cert = ContentFile(b"%PDF-1.4 ... Degree Certificate ...", name="btech_certificate.pdf")
+            EmployeeDocument.objects.create(
+                user=arjun,
+                doc_type=EmployeeDocument.DocType.CERTIFICATE,
+                title="Bachelor of Technology Degree Certificate",
+                file=dummy_cert,
+                file_size=1024 * 210,
+                file_type="application/pdf",
+                status=EmployeeDocument.Status.PENDING,
+                uploaded_by=arjun,
+            )
+            self.stdout.write(self.style.SUCCESS("  Created demo documents for Arjun."))
 
         self.stdout.write(self.style.SUCCESS("\n[DONE] seed_demo complete."))
         self.stdout.write("   Admin:  admin / Admin@12345")

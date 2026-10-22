@@ -8,6 +8,7 @@ import LiveCamera from '../../components/LiveCamera';
 import MapView, { MapMarker } from '../../components/MapView';
 import SelfieCapture from '../../components/SelfieCapture';
 import TrackingStatus from '../../components/TrackingStatus';
+import ProfileHub from '../../components/profile/ProfileHub';
 import { useAuth } from '../../hooks/useAuth';
 import { useTracking } from '../../hooks/useTracking';
 import api, { errorMessage } from '../../services/api';
@@ -70,6 +71,9 @@ const fmtDurationLive = (startTimeStr: string) => {
   const s = diffSec % 60;
   return `${h > 0 ? `${h}h ` : ''}${m}m ${s < 10 ? '0' : ''}${s}s`;
 };
+
+// Feature flag for CRM and Request (default false; if enabled, shown under Field Visits tab)
+const FEATURE_FLAG_ENABLE_CRM_REQUEST = false;
 
 export default function UserDashboard() {
   const { user } = useAuth();
@@ -149,38 +153,6 @@ export default function UserDashboard() {
   
   const { logout } = useAuth();
   const navigate = useNavigate();
-
-  // Modals state
-  const [activeModal, setActiveModalState] = useState<string | null>(null);
-  
-  // Custom setter that pushes to history so mobile back button works
-  const setActiveModal = (modalId: string | null) => {
-    if (modalId) {
-      window.history.pushState({ modal: modalId }, '');
-    } else if (activeModal) {
-      window.history.back(); // Pop the state if closing
-    }
-    setActiveModalState(modalId);
-  };
-
-  useEffect(() => {
-    const handlePopState = (e: PopStateEvent) => {
-      // If user presses physical back button, close the modal instead of exiting app
-      if (activeModal) {
-        setActiveModalState(null);
-      }
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [activeModal]);
-
-  const [leaveForm, setLeaveForm] = useState({
-    leave_type: 'SICK',
-    start_date: '',
-    end_date: '',
-    reason: ''
-  });
-  const [submittingLeave, setSubmittingLeave] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -826,23 +798,35 @@ export default function UserDashboard() {
                 Log, monitor, and record evidence for official Ncode / GNFC field stops
               </p>
             </div>
-            <button
-              className="btn btn-primary text-xs flex items-center justify-center gap-1.5"
-              onClick={openStartVisitModal}
-              disabled={!session || busy || !!activeVisit}
-              title={
-                !session
-                  ? 'Punch in first to start visits'
-                  : activeVisit
-                  ? 'Complete your current active visit first'
-                  : ''
-              }
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-              </svg>
-              Start Field Visit
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              {FEATURE_FLAG_ENABLE_CRM_REQUEST && (
+                <>
+                  <button type="button" className="btn btn-secondary text-xs px-2.5 py-1.5">
+                    CRM
+                  </button>
+                  <button type="button" className="btn btn-secondary text-xs px-2.5 py-1.5">
+                    Request
+                  </button>
+                </>
+              )}
+              <button
+                className="btn btn-primary text-xs flex items-center justify-center gap-1.5"
+                onClick={openStartVisitModal}
+                disabled={!session || busy || !!activeVisit}
+                title={
+                  !session
+                    ? 'Punch in first to start visits'
+                    : activeVisit
+                    ? 'Complete your current active visit first'
+                    : ''
+                }
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                </svg>
+                Start Field Visit
+              </button>
+            </div>
           </div>
 
           {!session && (
@@ -1096,139 +1080,13 @@ export default function UserDashboard() {
 
       {/* ================= TAB 6: PROFILE (MAIN HUB) ================= */}
       {activeTab === 'profile' && (
-        <div className="-mx-4 -mt-4 bg-slate-50 min-h-full pb-6">
-          {/* Avatar Section */}
-          <div className="bg-white pb-6 pt-8 flex flex-col items-center">
-            <div className="relative w-24 h-24 rounded-full border border-dashed border-slate-300 flex items-center justify-center bg-slate-50 mb-3 text-slate-400 text-[10px] font-semibold text-center leading-tight">
-               ADD<br/>IMAGE
-               <div className="absolute bottom-0 right-0 w-6 h-6 bg-[#00c696] rounded-full flex items-center justify-center text-white border-2 border-white shadow-sm">
-                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>
-               </div>
-            </div>
-            <h2 className="text-slate-600 font-bold text-sm tracking-wide">{user?.full_name || user?.username}</h2>
-          </div>
-
-          {/* Grid Section */}
-          <div className="p-3 bg-slate-50">
-            <div className="grid grid-cols-3 gap-2">
-              {/* Card 1: Profile */}
-              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('profile')}>
-                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                 </div>
-                 <span className="text-[10px] text-slate-600 font-medium">Profile</span>
-              </div>
-
-              {/* Card 2: View Attendance */}
-              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square relative cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('attendance')}>
-                 <div className="absolute top-2 right-2 w-1.5 h-1.5 bg-rose-400 rounded-full"></div>
-                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                 </div>
-                 <span className="text-[10px] text-slate-600 font-medium leading-tight">View<br/>Attendance</span>
-              </div>
-
-              {/* Card 3: Announcements */}
-              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('announcements')}>
-                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg>
-                 </div>
-                 <span className="text-[9px] text-slate-600 font-medium truncate w-full">Announcements</span>
-              </div>
-
-              {/* Card 4: Set alarm */}
-              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('alarm')}>
-                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                 </div>
-                 <span className="text-[10px] text-slate-600 font-medium">Set alarm</span>
-              </div>
-
-              {/* Card 5: Request Leave */}
-              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('leave')}>
-                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
-                 </div>
-                 <span className="text-[10px] text-slate-600 font-medium leading-tight">Request<br/>Leave</span>
-              </div>
-
-              {/* Card 6: CRM */}
-              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square relative cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('crm')}>
-                 <div className="absolute top-1 right-1 bg-red-600 text-white text-[8px] font-bold px-1 rounded-sm">NEW</div>
-                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                 </div>
-                 <span className="text-[10px] text-slate-600 font-medium">CRM</span>
-              </div>
-
-              {/* Card 7: Request Reimbursement */}
-              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square relative cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('reimbursement')}>
-                 <div className="absolute top-1 right-1 bg-red-600 text-white text-[8px] font-bold px-1 rounded-sm">NEW</div>
-                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                 </div>
-                 <span className="text-[9px] text-slate-600 font-medium leading-tight">Request<br/>Reimbursement</span>
-              </div>
-
-              {/* Card 8: Notes */}
-              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('notes')}>
-                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                 </div>
-                 <span className="text-[10px] text-slate-600 font-medium">Notes</span>
-              </div>
-
-              {/* Card 9: Holiday List */}
-              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('holidays')}>
-                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                 </div>
-                 <span className="text-[10px] text-slate-600 font-medium leading-tight">Holiday<br/>List</span>
-              </div>
-
-              {/* Card 10: My Documents */}
-              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('documents')}>
-                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
-                 </div>
-                 <span className="text-[10px] text-slate-600 font-medium leading-tight">My<br/>Documents</span>
-              </div>
-
-              {/* Card 11: Attendance Reminder */}
-              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('reminder')}>
-                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
-                 </div>
-                 <span className="text-[9px] text-slate-600 font-medium leading-tight">Attendance<br/>Reminder</span>
-              </div>
-
-              {/* Card 12: Refer & Earn */}
-              <div className="bg-white rounded p-3 flex flex-col items-center justify-center text-center shadow-sm border border-slate-100 aspect-square cursor-pointer hover:bg-slate-50" onClick={() => setActiveModal('refer')}>
-                 <div className="w-10 h-10 rounded-full bg-[#e6f8f3] text-[#00c696] flex items-center justify-center mb-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/></svg>
-                 </div>
-                 <span className="text-[10px] text-slate-600 font-medium leading-tight">Refer<br/>& Earn</span>
-              </div>
-
-            </div>
-            
-            {/* Quick Action Logout Button */}
-            <div className="mt-8 mb-8 mx-4">
-               <button 
-                 onClick={() => {
-                   if (confirm("Are you sure you want to log out?")) {
-                     logout();
-                     navigate('/login', { replace: true });
-                   }
-                 }}
-                 className="w-full py-4 bg-white text-rose-600 font-bold rounded-xl border border-rose-100 shadow-sm flex items-center justify-center gap-2 hover:bg-rose-50 transition-colors"
-               >
-                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-                 SECURE LOGOUT
-               </button>
-            </div>
-
-          </div>
+        <div className="-mx-4 -mt-4 min-h-full">
+          <ProfileHub
+            onLogout={() => {
+              logout();
+              navigate('/login', { replace: true });
+            }}
+          />
         </div>
       )}
       {/* ================= 1. START FIELD VISIT MODAL ================= */}
@@ -1808,130 +1666,7 @@ export default function UserDashboard() {
           </div>
         </div>
       )}
-      {/* ================= MODALS (GENERIC & SPECIFIC) ================= */}
-      {activeModal && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4">
-          <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <h3 className="font-bold text-slate-900 text-lg capitalize">{activeModal.replace('-', ' ')}</h3>
-              <button className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-slate-300" onClick={() => setActiveModal(null)}>✕</button>
-            </div>
-            
-            {activeModal === 'leave' ? (
-              <form className="p-5 overflow-y-auto" onSubmit={async (e) => {
-                e.preventDefault();
-                setSubmittingLeave(true);
-                try {
-                  await api.post('/attendance/leaves/', leaveForm);
-                  setSuccessMsg('Leave request submitted successfully!');
-                  setActiveModal(null);
-                  setLeaveForm({ leave_type: 'SICK', start_date: '', end_date: '', reason: '' });
-                } catch (err: any) {
-                  setError(err.response?.data?.detail || 'Failed to submit leave request');
-                } finally {
-                  setSubmittingLeave(false);
-                }
-              }}>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Leave Type *</label>
-                    <select 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm"
-                      value={leaveForm.leave_type}
-                      onChange={e => setLeaveForm({...leaveForm, leave_type: e.target.value})}
-                      required
-                    >
-                      <option value="SICK">Sick Leave</option>
-                      <option value="CASUAL">Casual Leave</option>
-                      <option value="PTO">Paid Time Off (PTO)</option>
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Start Date *</label>
-                      <input 
-                        type="date" 
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm" 
-                        value={leaveForm.start_date}
-                        onChange={e => setLeaveForm({...leaveForm, start_date: e.target.value})}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">End Date *</label>
-                      <input 
-                        type="date" 
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm" 
-                        value={leaveForm.end_date}
-                        onChange={e => setLeaveForm({...leaveForm, end_date: e.target.value})}
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Reason for Leave *</label>
-                    <textarea 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm min-h-[80px]" 
-                      placeholder="Provide details..."
-                      value={leaveForm.reason}
-                      onChange={e => setLeaveForm({...leaveForm, reason: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <button type="submit" disabled={submittingLeave} className="w-full bg-[#00c696] hover:bg-[#00a880] text-white font-bold py-3 rounded-xl shadow-md transition-colors disabled:opacity-50">
-                    {submittingLeave ? 'Submitting...' : 'Submit Request'}
-                  </button>
-                </div>
-              </form>
-            ) : activeModal === 'profile' ? (
-              <div className="p-5 space-y-4">
-                 <div className="divide-y divide-slate-100 text-sm">
-                   <div className="py-2.5 flex justify-between"><span className="text-slate-500">Designation</span><span className="font-semibold text-slate-800">{user?.profile?.designation || 'Field Engineer'}</span></div>
-                   <div className="py-2.5 flex justify-between"><span className="text-slate-500">ESIC Number</span><span className="font-mono text-slate-800">{user?.profile?.esic_number || '—'}</span></div>
-                   <div className="py-2.5 flex justify-between"><span className="text-slate-500">Corporate Email</span><span className="font-medium text-slate-800">{user?.email || '—'}</span></div>
-                   <div className="py-2.5 flex justify-between"><span className="text-slate-500">System Role</span><span className="badge badge-neutral">{user?.role}</span></div>
-                 </div>
-                 <div className="pt-4 border-t border-slate-100">
-                   <button 
-                     onClick={() => {
-                       logout();
-                       navigate('/login', { replace: true });
-                     }}
-                     className="w-full py-3 bg-rose-50 text-rose-600 font-bold rounded-xl border border-rose-100 hover:bg-rose-100"
-                   >
-                     Log Out
-                   </button>
-                 </div>
-              </div>
-            ) : activeModal === 'holidays' ? (
-              <div className="p-5 space-y-3">
-                 {[
-                   { name: 'Diwali', date: '2026-11-08' },
-                   { name: 'Christmas', date: '2026-12-25' },
-                   { name: 'New Year', date: '2027-01-01' }
-                 ].map(h => (
-                   <div key={h.date} className="flex justify-between items-center p-3 border border-slate-100 rounded-lg bg-slate-50">
-                     <span className="font-bold text-slate-700">{h.name}</span>
-                     <span className="text-sm font-mono text-slate-500">{h.date}</span>
-                   </div>
-                 ))}
-              </div>
-            ) : activeModal === 'documents' ? (
-              <div className="p-5 space-y-3">
-                 <div className="p-3 border border-dashed border-slate-300 rounded-xl bg-slate-50 flex items-center justify-center text-slate-500 cursor-pointer hover:bg-slate-100">
-                    + Upload Document (PAN / Aadhar)
-                 </div>
-              </div>
-            ) : (
-              <div className="p-10 flex flex-col items-center justify-center text-center">
-                 <svg className="w-16 h-16 text-slate-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-                 <h4 className="text-slate-800 font-bold text-lg mb-1">Coming Soon</h4>
-                 <p className="text-slate-500 text-sm">This module is actively being developed and will be available shortly.</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+
       </div>
 
       {/* BOTTOM NAV */}

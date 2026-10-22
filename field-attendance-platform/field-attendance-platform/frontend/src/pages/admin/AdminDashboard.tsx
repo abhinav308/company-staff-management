@@ -6,9 +6,27 @@ import Layout from '../../components/Layout';
 import MapView, { type MapMarker } from '../../components/MapView';
 import api, { tokens, WS_URL } from '../../services/api';
 import { fmtDate, fmtDuration, fmtTime, STATUS_COLOR } from '../../services/format';
+import { 
+  AdminAnnouncementsPublish, 
+  AdminDocumentQueue, 
+  AdminHolidayManagement, 
+  AdminLeaveApprovals, 
+  AdminProfileChangeQueue 
+} from '../../components/admin/AdminOperationsHub';
 import type { AdminSummary, AdminUser, AdminVisitDetail, LivePoint, Page, Session, Visit, VisitPhoto } from '../../types';
 
-type AdminTab = 'overview' | 'users' | 'map' | 'visits' | 'attendance' | 'audit';
+type AdminTab = 
+  | 'overview' 
+  | 'users' 
+  | 'map' 
+  | 'visits' 
+  | 'attendance' 
+  | 'audit'
+  | 'leaves'
+  | 'holidays'
+  | 'documents'
+  | 'announcements'
+  | 'profile_changes';
 
 type ConnState = 'connected' | 'connecting' | 'offline';
 
@@ -73,8 +91,13 @@ export default function AdminDashboard({ defaultTab }: { defaultTab?: AdminTab }
     if (path.includes('/sessions')) return 'attendance';
     if (path.includes('/reports')) return 'visits';
     if (path.includes('/audit')) return 'audit';
+    if (path.includes('/leaves')) return 'leaves';
+    if (path.includes('/holidays')) return 'holidays';
+    if (path.includes('/documents')) return 'documents';
+    if (path.includes('/announcements')) return 'announcements';
+    if (path.includes('/profile-changes')) return 'profile_changes';
     const tabParam = new URLSearchParams(window.location.search).get('tab');
-    if (tabParam === 'visits' || tabParam === 'attendance' || tabParam === 'users' || tabParam === 'map' || tabParam === 'audit') {
+    if (tabParam && ['visits', 'attendance', 'users', 'map', 'audit', 'leaves', 'holidays', 'documents', 'announcements', 'profile_changes'].includes(tabParam)) {
       return tabParam as AdminTab;
     }
     return 'overview';
@@ -623,6 +646,11 @@ export default function AdminDashboard({ defaultTab }: { defaultTab?: AdminTab }
     { id: 'users', label: 'Field Personnel', icon: 'users', route: '/admin/users', badge: users.length },
     { id: 'attendance', label: 'Sessions & Attendance', icon: 'attendance', route: '/admin/sessions', badge: sessions.length },
     { id: 'visits', label: 'Field Reports', icon: 'reports', route: '/admin/reports', badge: visitTotalCount },
+    { id: 'leaves', label: 'Leave Approvals', icon: 'leaves', route: '/admin/leaves' },
+    { id: 'holidays', label: 'Holidays', icon: 'holidays', route: '/admin/holidays' },
+    { id: 'documents', label: 'Document Queue', icon: 'documents', route: '/admin/documents' },
+    { id: 'announcements', label: 'Announcements', icon: 'announcements', route: '/admin/announcements' },
+    { id: 'profile_changes', label: 'Profile Changes', icon: 'profile_changes', route: '/admin/profile-changes' },
     { id: 'audit', label: 'Audit Log', icon: 'audit', route: '/admin/audit', badge: auditTotalCount },
   ];
 
@@ -634,7 +662,13 @@ export default function AdminDashboard({ defaultTab }: { defaultTab?: AdminTab }
       activeTab={activeTab}
       onTabChange={(t) => {
         setActiveTab(t as AdminTab);
-        const targetRoute = t === 'overview' ? '/admin' : `/admin/${t === 'attendance' ? 'sessions' : t === 'visits' ? 'reports' : t}`;
+        const routeSuffix = 
+          t === 'overview' ? '' :
+          t === 'attendance' ? '/sessions' :
+          t === 'visits' ? '/reports' :
+          t === 'profile_changes' ? '/profile-changes' :
+          `/${t}`;
+        const targetRoute = `/admin${routeSuffix}`;
         if (window.location.pathname !== targetRoute) {
           window.history.pushState(null, '', targetRoute);
         }
@@ -2434,6 +2468,21 @@ export default function AdminDashboard({ defaultTab }: { defaultTab?: AdminTab }
           </div>
         </div>
       )}
+
+      {/* ================= TAB 7: LEAVE APPROVALS ================= */}
+      {activeTab === 'leaves' && <AdminLeaveApprovals />}
+
+      {/* ================= TAB 8: HOLIDAYS ================= */}
+      {activeTab === 'holidays' && <AdminHolidayManagement />}
+
+      {/* ================= TAB 9: DOCUMENT VERIFICATION ================= */}
+      {activeTab === 'documents' && <AdminDocumentQueue />}
+
+      {/* ================= TAB 10: ANNOUNCEMENTS ================= */}
+      {activeTab === 'announcements' && <AdminAnnouncementsPublish />}
+
+      {/* ================= TAB 11: PROFILE CHANGES ================= */}
+      {activeTab === 'profile_changes' && <AdminProfileChangeQueue />}
     </Layout>
   );
 }
